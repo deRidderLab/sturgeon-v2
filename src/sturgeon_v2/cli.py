@@ -200,7 +200,7 @@ def main():
 
     args = parser.parse_args()
     
-    if args.num_samples == None:
+    if args.num_samplings == None:
         num_samples = 1 
     else:
         num_samples = int(args.num_samples)
@@ -215,7 +215,7 @@ def main():
 
     path_to_model_files = unpack_zip_file(args.model)
 
-    predict(args.input_sample, path_to_model_files, int(args.num_CpGs), args.output_file, num_samples, args.file_type)
+    predict(args.input_file, path_to_model_files, int(args.num_CpGs), args.output_file, num_samples, args.file_type)
 
 if __name__=='__main__':
     main()
