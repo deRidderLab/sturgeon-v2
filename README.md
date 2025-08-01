@@ -25,4 +25,4 @@ Options:
                         sampling.
   -f FILE_TYPE, --file_type FILE_TYPE
                         input file type 'bed' or 'csv'
-<\pre>
+</pre>
