@@ -10,7 +10,7 @@ import yaml
 import os
 import argparse
 
-def main(input_file, path_to_model_files, n, output_file, num_samples, file_type):
+def predict(input_file, path_to_model_files, n, output_file, num_samples, file_type):
 
     if num_samples == None:
         num_samples = 1
@@ -159,7 +159,7 @@ def main(input_file, path_to_model_files, n, output_file, num_samples, file_type
     df.to_csv(output_file, sep='\t', index=False)
 
 
-if __name__=='__main__':
+def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -215,4 +215,7 @@ if __name__=='__main__':
 
     path_to_model_files = unpack_zip_file(args.model)
 
-    main(args.input_sample, path_to_model_files, int(args.num_CpGs), args.output_file, num_samples, args.file_type)
+    predict(args.input_sample, path_to_model_files, int(args.num_CpGs), args.output_file, num_samples, args.file_type)
+
+if __name__=='__main__':
+    main()
