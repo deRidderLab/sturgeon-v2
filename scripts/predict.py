@@ -1,5 +1,14 @@
 from src.model import SturgeonSubmodel
 
+import numpy as np 
+import polars as pl 
+import pandas as pd
+
+import torch
+import yaml
+import os
+import argparse
+
 def main(input_file, path_to_model_files, n, output_file, num_samples, file_type):
 
     if num_samples == None:
@@ -64,6 +73,10 @@ def main(input_file, path_to_model_files, n, output_file, num_samples, file_type
     
     device = torch.device("cpu")
 
+    print('-------------------------------')
+    print('Loading submodels')
+    print('-------------------------------')
+
     models = []
 
     for i in range(10):
@@ -73,7 +86,7 @@ def main(input_file, path_to_model_files, n, output_file, num_samples, file_type
             activation = 'silu' 
         ).to(device)
 
-        chk = torch.load(os.path.join(experiment_dir, f'split_{i}', 'checkpoint.pt'), weights_only=False, map_location=device)
+        chk = torch.load(os.path.join(path_to_model_files, 'checkpoints', f'checkpoint_{i}.pt'), weights_only=False, map_location=device)
 
         model.load_state_dict(chk)
 
@@ -81,20 +94,22 @@ def main(input_file, path_to_model_files, n, output_file, num_samples, file_type
 
         models.append(model)
 
-    calibration_chk = torch.load(os.path.join(path_to_model_files, 'checkpoint.pt'), weights_only=False, map_location=device)
-
-    calibration_model = MetaLearner(output_size).to(device)
-
-    calibration_model.load_state_dict(calibration_chk)
-
-    calibration_model.eval()
-
     nn_input = torch.tensor(nn_input['methylation_call'].to_numpy())
 
     result = np.zeros((num_samples, output_size))
 
+    print('-------------------------------')
+    print('Loading calibration bins')
+    print('-------------------------------')
+
+
     bin_centers = np.load(os.path.join(path_to_model_files, 'bin_centers.npy'))
     temps = np.load(os.path.join(path_to_model_files, 'temps.npy'))
+
+    print('-------------------------------')
+    print('Running subsample predictions')
+    print('-------------------------------')
+
 
     for i in range(num_samples):
 
@@ -188,6 +203,14 @@ if __name__=='__main__':
         num_samples = 1 
     else:
         num_samples = int(args.num_samples)
+    
+    print('---------------------------------------------------------------------')
+    print('Running intraoperative methylation based classification')
+    print('---------------------------------------------------------------------')
+
+    print('-------------------------------')
+    print('Loading submodels')
+    print('-------------------------------')
 
     path_to_model_files = unpack_zip_file(args.model)
 
