@@ -118,7 +118,17 @@ def predict(input_file, path_to_model_files, n, output_file, num_samples, file_t
         positions = torch.nonzero(nn_input)
         
         if n == None:
+            if i == 0:
+                print('-------------------------------')
+                print('Using all positions')
+                print('-------------------------------')
             n = len(positions)
+
+        if n > len(positions):
+            if i == 0:
+                print('-------------------------------')
+                print('Using all positions')
+                print('-------------------------------')
 
         random_ind = torch.randperm(len(positions), generator=torch.Generator().manual_seed(i))[:n]
 
@@ -160,6 +170,7 @@ def predict(input_file, path_to_model_files, n, output_file, num_samples, file_t
 
 
 def main():
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -203,19 +214,22 @@ def main():
     if args.num_samplings == None:
         num_samples = 1 
     else:
-        num_samples = int(args.num_samples)
+        num_samples = int(args.num_samplings)
     
     print('---------------------------------------------------------------------')
     print('Running intraoperative methylation based classification')
     print('---------------------------------------------------------------------')
 
-    print('-------------------------------')
-    print('Loading submodels')
-    print('-------------------------------')
-
     path_to_model_files = unpack_zip_file(args.model)
 
     predict(args.input_file, path_to_model_files, int(args.num_CpGs), args.output_file, num_samples, args.file_type)
 
-if __name__=='__main__':
-    main()
+def entrypoint():
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        print("\n❌ ERROR: An exception occurred in sturgeon-v2 CLI\n")
+        traceback.print_exc()
+        exit(1)
+

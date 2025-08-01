@@ -28,4 +28,4 @@ packages = ["sturgeon_v2"]
 "" = "src"
 
 [project.scripts]
-sturgeon-v2 = "sturgeon_v2.cli:main"
+sturgeon-v2 = "sturgeon_v2.cli:entrypoint"
