@@ -1,5 +1,5 @@
-from src.sturgeon_v2.model import SturgeonSubmodel
-from src.sturgeon_v2.zip_utils import unpack_zip_file
+from sturgeon_v2.model import SturgeonSubmodel
+from sturgeon_v2.zip_utils import unpack_zip_file
 
 import numpy as np 
 import polars as pl 
