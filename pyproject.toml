@@ -1,0 +1,32 @@
+[project]
+name = "sturgeon-v2"
+version = "0.1.0"
+description = "Sturgeon v2: Local installable package"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Huub van der Ent", email = "h.t.vanderent@umcutrecht.nl" }
+]
+dependencies = []
+requires-python = ">=3.8"
+
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "polars>=0.19",
+    "torch>=2.0",
+    "pyyaml>=6.0"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["sturgeon_v2"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[project.scripts]
+sturgeon-v2 = "sturgeon_v2.cli:main"
