@@ -5,7 +5,8 @@ This repos presents a software package to easily run Sturgeon V2 in a clinical s
 Install using `pip install git+ssh://git@github.com/UMCUGenetics/sturgeon-v2.git`
 
 ## Usage
-`Usage: sturgeon-v2 [-h] [-i INPUT_FILE] [-m MODEL] [-c NUM_CPGS] [-o OUTPUT_FILE] [-s NUM_SAMPLINGS]
+```
+Usage: sturgeon-v2 [-h] [-i INPUT_FILE] [-m MODEL] [-c NUM_CPGS] [-o OUTPUT_FILE] [-s NUM_SAMPLINGS]
                    [-f FILE_TYPE]
 
 Options:
@@ -22,4 +23,5 @@ Options:
                         Specify the number of random samples of size num_CpGs. Default is 1 random
                         sampling.
   -f FILE_TYPE, --file_type FILE_TYPE
-                        input file type 'bed' or 'csv'`
+                        input file type 'bed' or 'csv'
+```
