@@ -7,7 +7,6 @@ license = { file = "LICENSE" }
 authors = [
     { name = "Huub van der Ent", email = "h.t.vanderent@umcutrecht.nl" }
 ]
-dependencies = []
 requires-python = ">=3.8"
 
 dependencies = [
