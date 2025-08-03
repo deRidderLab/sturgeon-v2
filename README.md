@@ -3,7 +3,7 @@ This repos presents a software package to easily run Sturgeon V2 in a clinical s
 
 ## Installation
 * Install using `pip install git+ssh://git@github.com/UMCUGenetics/sturgeon-v2.git`
-* Download the cns-v2 [zip file](https://example.com)
+* Download the cns-v2 [zip file](https://www.dropbox.com/scl/fi/fla0j8i62xap6bpjofq3x/cns-v2.zip?rlkey=gk6hwqxjxl4v9uq0evfd9w599&st=rpg6fom4&dl=0)
 
 ## Usage
 <pre>
