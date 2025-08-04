@@ -1,5 +1,5 @@
 # sturgeon-v2
-This repository presents a pip installabel software package to easily run Sturgeon V2 in a clinical setting. Sturgeon V2 uses an ensemble of submodels. The result of this ensemble is calibrated based on the sequencing depth.
+This repository presents a pip installable software package to easily run Sturgeon V2 in a clinical setting. Sturgeon V2 was trained using a relabeling strategy to make use of unlabeled data. Sturgeon V2 makes use of an ensemble of submodels. The average of these submodels is calibrated based on the sequencing depth.
 
 ## Installation
 * Install using `pip install git+ssh://git@github.com/UMCUGenetics/sturgeon-v2.git`
