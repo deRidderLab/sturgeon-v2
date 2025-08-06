@@ -222,7 +222,7 @@ def main():
 
     path_to_model_files = unpack_zip_file(args.model)
 
-    predict(args.input_file, path_to_model_files, int(args.num_CpGs), args.output_file, num_samples, args.file_type)
+    predict(args.input_file, path_to_model_files, args.num_CpGs, args.output_file, num_samples, args.file_type)
 
 def entrypoint():
     try:
