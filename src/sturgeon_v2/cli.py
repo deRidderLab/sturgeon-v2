@@ -104,8 +104,13 @@ def predict(input_file, path_to_model_files, n, output_file, num_samples, file_t
     print('-------------------------------')
 
 
-    bin_centers = np.load(os.path.join(path_to_model_files, 'bin_centers.npy'))
-    temps = np.load(os.path.join(path_to_model_files, 'temps.npy'))
+    bin_centers = np.load(
+        os.path.join(path_to_model_files, 'bin_centers.npy')
+    )
+
+    temps = np.load(
+        os.path.join(path_to_model_files, 'temps.npy')
+    )
 
     print('-------------------------------')
     print('Running subsample predictions')
@@ -118,19 +123,29 @@ def predict(input_file, path_to_model_files, n, output_file, num_samples, file_t
         positions = torch.nonzero(nn_input)
         
         if n == None:
+
             if i == 0:
                 print('-------------------------------')
                 print('Using all positions')
                 print('-------------------------------')
+
             n = len(positions)
+        elif int(n) > len(positions):
 
-        if n > len(positions):
             if i == 0:
                 print('-------------------------------')
                 print('Using all positions')
                 print('-------------------------------')
+            
+            n = int(n)
+        else:
+            n = int(n)
 
-        random_ind = torch.randperm(len(positions), generator=torch.Generator().manual_seed(i))[:n]
+
+        random_ind = torch.randperm(
+            len(positions), 
+            generator=torch.Generator().manual_seed(i)
+        )[:n]
 
         num_feature_input = int(random_ind.shape[0])
 
@@ -166,7 +181,9 @@ def predict(input_file, path_to_model_files, n, output_file, num_samples, file_t
 
     df = pd.DataFrame(result, columns=class_names)
 
-    df.to_csv(output_file, sep='\t', index=False)
+    df['probes'] = len(df) * [n]
+
+    df.to_csv(output_file, index=False)
 
 
 def main():
