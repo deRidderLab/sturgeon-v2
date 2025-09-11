@@ -51,6 +51,11 @@ def predict(input_file, path_to_model_files, n, output_file, num_samples, file_t
             input_file,
             separator='\t'
         )
+
+    bed_file = bed_file.select([
+        pl.col('probe_id').cast(pl.Utf8).alias('probe_id'),
+        pl.col('methylation_call').cast(pl.Int32, strict=False).alias('methylation_call')
+    ])
         
     bed_file = bed_file.with_columns(
         methylation_call=pl.when(pl.col('methylation_call')==0)
@@ -137,7 +142,7 @@ def predict(input_file, path_to_model_files, n, output_file, num_samples, file_t
                 print('Using all positions')
                 print('-------------------------------')
             
-            n = int(n)
+            n = len(positions)
         else:
             n = int(n)
 
