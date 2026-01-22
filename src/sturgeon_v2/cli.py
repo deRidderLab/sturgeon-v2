@@ -1,256 +1,235 @@
-from sturgeon_v2.model import SturgeonSubmodel
-from sturgeon_v2.zip_utils import unpack_zip_file
-
-import numpy as np 
-import polars as pl 
-import pandas as pd
-
-import torch
-import yaml
-import os
 import argparse
+import io
+import zipfile
+import tempfile
+import os
+import shutil
 
-def predict(input_file, path_to_model_files, n, output_file, num_samples, file_type):
+import numpy as np
+import pandas as pd
+import polars as pl
+import yaml
+import onnxruntime as ort
 
-    if num_samples == None:
+
+# ---------------------------------------------------------------------
+# Utility
+# ---------------------------------------------------------------------
+def softmax(x, axis=1):
+    x = x - np.max(x, axis=axis, keepdims=True)
+    exp_x = np.exp(x)
+    return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
+
+
+# ---------------------------------------------------------------------
+# Prediction
+# ---------------------------------------------------------------------
+def predict(
+    input_file,
+    model_zip_path,
+    n,
+    output_file,
+    num_samples,
+    file_type,
+):
+    if num_samples is None:
         num_samples = 1
 
-    with open(os.path.join(path_to_model_files, 'classification_system.yaml'), 'r') as stream:
-        classification_file = yaml.safe_load(stream)
+    # --------------------------------------------------------------
+    # Extract model zip to temp directory
+    # --------------------------------------------------------------
+    tmpdir = tempfile.mkdtemp(prefix="sturgeon_onnx_")
 
-    classes = list(classification_file['decoder']['type'].keys())
+    try:
+        with zipfile.ZipFile(model_zip_path, "r") as zf:
+            zf.extractall(tmpdir)
 
-    class_names = list(classification_file['encoder']['type'].keys())
+        model_root = os.path.join(tmpdir, "cns-v2")
+        model_path = os.path.join(model_root, "model.onnx")
 
-    output_size = len(classes)
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"model.onnx not found at {model_path}")
 
-    probe_df = pl.read_csv(
-        os.path.join(path_to_model_files, 'probe.bed'), 
-        separator='\t'
-    )
+        # --------------------------------------------------------------
+        # Load classification config
+        # --------------------------------------------------------------
+        with open(os.path.join(model_root, "classification_system.yaml"), "r") as f:
+            classification_file = yaml.safe_load(f)
 
-    input_size = len(probe_df)
+        class_names = list(classification_file["encoder"]["type"].keys())
+        output_size = len(class_names)
 
-    if file_type == 'csv':
-        columns = ['probe_id', 'methylation_call']
-
-        bed_file = pl.read_csv(
-            input_file,
-            separator=',',
-            has_header=False
+        # --------------------------------------------------------------
+        # Load probe file
+        # --------------------------------------------------------------
+        probe_df = pl.read_csv(
+            os.path.join(model_root, "probe.bed"),
+            separator="\t",
         )
 
-        bed_file.columns = columns
-    if file_type == 'bed_carlo':
-        bed_file = pl.read_csv(
-            input_file,
-            separator=' '
-        )
-    if file_type == 'bed':
-        bed_file = pl.read_csv(
-            input_file,
-            separator='\t'
-        )
+        input_size = len(probe_df)
 
-    bed_file = bed_file.select([
-        pl.col('probe_id').cast(pl.Utf8).alias('probe_id'),
-        pl.col('methylation_call').cast(pl.Int32, strict=False).alias('methylation_call')
-    ])
-        
-    bed_file = bed_file.with_columns(
-        methylation_call=pl.when(pl.col('methylation_call')==0)
-                .then(pl.lit(-1))
-                .otherwise(pl.col('methylation_call'))
-    )
+        # --------------------------------------------------------------
+        # Load input methylation data
+        # --------------------------------------------------------------
+        if file_type == "csv":
+            bed_file = pl.read_csv(
+                input_file,
+                separator=",",
+                has_header=False,
+                new_columns=["probe_id", "methylation_call"],
+            )
 
+        elif file_type == "bed":
+            bed_file = pl.read_csv(input_file, separator="\t")
 
-    nn_input = probe_df.join(
-        bed_file, 
-        left_on='name', 
-        right_on='probe_id', 
-        how='left', 
-        validate='1:1'
-    )
+        elif file_type == "bed_carlo":
+            bed_file = pl.read_csv(input_file, separator=" ")
 
-    nn_input = nn_input.with_columns(
-        pl.all()
-        .fill_null(0)
-    )
-    
-    device = torch.device("cpu")
-
-    print('-------------------------------')
-    print('Loading submodels')
-    print('-------------------------------')
-
-    models = []
-
-    for i in range(10):
-        model = SturgeonSubmodel(
-            input_size = input_size, 
-            output_size = output_size, 
-            activation = 'silu' 
-        ).to(device)
-
-        chk = torch.load(os.path.join(path_to_model_files, 'checkpoints', f'checkpoint_{i}.pt'), weights_only=False, map_location=device)
-
-        model.load_state_dict(chk)
-
-        model.eval()
-
-        models.append(model)
-
-    nn_input = torch.tensor(nn_input['methylation_call'].to_numpy())
-
-    result = np.zeros((num_samples, output_size))
-
-    print('-------------------------------')
-    print('Loading calibration bins')
-    print('-------------------------------')
-
-
-    bin_centers = np.load(
-        os.path.join(path_to_model_files, 'bin_centers.npy')
-    )
-
-    temps = np.load(
-        os.path.join(path_to_model_files, 'temps.npy')
-    )
-
-    print('-------------------------------')
-    print('Running subsample predictions')
-    print('-------------------------------')
-
-
-    for i in range(num_samples):
-
-        # Find the indices of positions with 1 or -1
-        positions = torch.nonzero(nn_input)
-        
-        if n == None:
-
-            if i == 0:
-                print('-------------------------------')
-                print('Using all positions')
-                print('-------------------------------')
-
-            n = len(positions)
-        elif int(n) > len(positions):
-
-            if i == 0:
-                print('-------------------------------')
-                print('Using all positions')
-                print('-------------------------------')
-            
-            n = len(positions)
         else:
-            n = int(n)
+            raise ValueError(f"Unsupported file type: {file_type}")
 
+        bed_file = bed_file.select(
+            [
+                pl.col("probe_id").cast(pl.Utf8),
+                pl.col("methylation_call")
+                .cast(pl.Int32, strict=False)
+                .alias("methylation_call"),
+            ]
+        )
 
-        random_ind = torch.randperm(
-            len(positions), 
-            generator=torch.Generator().manual_seed(i)
-        )[:n]
+        bed_file = bed_file.with_columns(
+            methylation_call=pl.when(pl.col("methylation_call") == 0)
+            .then(-1)
+            .otherwise(pl.col("methylation_call"))
+        )
 
-        num_feature_input = int(random_ind.shape[0])
+        # --------------------------------------------------------------
+        # Join probes with input
+        # --------------------------------------------------------------
+        nn_input = probe_df.join(
+            bed_file,
+            left_on="name",
+            right_on="probe_id",
+            how="left",
+            validate="1:1",
+        ).with_columns(pl.all().fill_null(0))
 
-        selected_positions = positions[random_ind]
+        nn_input = nn_input["methylation_call"].to_numpy().astype(np.float32)
 
-        # Create a new tensor with all zeros
-        new_tensor = torch.zeros_like(nn_input)
+        # --------------------------------------------------------------
+        # Load ONNX model
+        # --------------------------------------------------------------
+        print("-------------------------------")
+        print("Loading ONNX model")
+        print("-------------------------------")
 
-        # Set the selected positions to their original values
-        new_tensor[selected_positions] = nn_input[selected_positions]
+        so = ort.SessionOptions()
+        so.intra_op_num_threads = 1
+        so.inter_op_num_threads = 1
 
-        new_tensor = new_tensor.reshape(1, -1).to(device).to(torch.float32)
-        
-        outputs = None
+        sess = ort.InferenceSession(
+            model_path,
+            sess_options=so,
+            providers=["CPUExecutionProvider"],
+        )
 
-        for k in range(10):
-            if outputs == None:
-                outputs = models[k](new_tensor)['y']
+        input_name = sess.get_inputs()[0].name
+        output_name = sess.get_outputs()[0].name
+
+        # --------------------------------------------------------------
+        # Load calibration data
+        # --------------------------------------------------------------
+        bin_centers = np.load(os.path.join(model_root, "bin_centers.npy"))
+        temps = np.load(os.path.join(model_root, "temps.npy"))
+
+        # --------------------------------------------------------------
+        # Run predictions
+        # --------------------------------------------------------------
+        print("-------------------------------")
+        print("Running subsample predictions")
+        print("-------------------------------")
+
+        result = np.zeros((num_samples, output_size))
+        positions = np.nonzero(nn_input)[0]
+
+        for i in range(num_samples):
+            if n is None or int(n) > len(positions):
+                if i == 0:
+                    print("-------------------------------")
+                    print("Using all positions")
+                    print("-------------------------------")
+                n_used = len(positions)
             else:
-                outputs += models[k](new_tensor)['y']
+                n_used = int(n)
 
-        outputs = outputs / 10
+            rng = np.random.default_rng(seed=i)
+            selected = rng.choice(positions, size=n_used, replace=False)
 
-        index = np.argmin(np.abs(bin_centers - num_feature_input))
+            new_input = np.zeros_like(nn_input)
+            new_input[selected] = nn_input[selected]
+            new_input = new_input.reshape(1, input_size)
 
-        temperature = temps[index]
+            outputs = sess.run(
+                [output_name],
+                {input_name: new_input},
+            )[0]
 
-        outputs = outputs / torch.exp(torch.tensor(temperature))
-        
-        outputs = torch.nn.Softmax(dim=1)(outputs)
+            index = np.argmin(np.abs(bin_centers - n_used))
+            temperature = temps[index]
+            outputs = outputs / np.exp(temperature)
 
-        result[i,:] = outputs.cpu().detach().numpy()
+            outputs = softmax(outputs, axis=1)
+            result[i, :] = outputs[0]
 
-    df = pd.DataFrame(result, columns=class_names)
+        # --------------------------------------------------------------
+        # Write output
+        # --------------------------------------------------------------
+        df = pd.DataFrame(result, columns=class_names)
+        df["probes"] = n_used
+        df.to_csv(output_file, index=False)
 
-    df['probes'] = len(df) * [n]
+    finally:
+        # Cleanup temp directory AFTER inference
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
-    df.to_csv(output_file, index=False)
 
-
+# ---------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------
 def main():
-
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "-i", 
-        "--input_file", 
-        help="path to input file"
-    )
-
-    parser.add_argument(
-        "-m", 
-        "--model", 
-        help="specify path to model zip you want to use."
-    )
-
-    parser.add_argument(
-        "-c", 
-        "--num_CpGs", 
-        help="specify the number of samples CpG sites (default is to use all available sites)."
-    )
-
-    parser.add_argument(
-        "-o", 
-        "--output_file", 
-        help="input"
-    )
-
-    parser.add_argument(
-        "-s", 
-        "--num_samplings", 
-        help="Specify the number of random samples of size num_CpGs. Default is 1 random sampling."
-    )
-
-    parser.add_argument(
-        "-f", 
-        "--file_type", 
-        help="input file type 'bed' or 'csv'"
-    )
+    parser.add_argument("-i", "--input_file", required=True)
+    parser.add_argument("-m", "--model", required=True)
+    parser.add_argument("-c", "--num_CpGs")
+    parser.add_argument("-o", "--output_file", required=True)
+    parser.add_argument("-s", "--num_samplings")
+    parser.add_argument("-f", "--file_type", required=True)
 
     args = parser.parse_args()
-    
-    if args.num_samplings == None:
-        num_samples = 1 
-    else:
-        num_samples = int(args.num_samplings)
-    
-    print('---------------------------------------------------------------------')
-    print('Running intraoperative methylation based classification')
-    print('---------------------------------------------------------------------')
+    num_samples = int(args.num_samplings) if args.num_samplings else 1
 
-    path_to_model_files = unpack_zip_file(args.model)
+    print("---------------------------------------------------------------------")
+    print("Running intraoperative methylation based classification (ONNX)")
+    print("---------------------------------------------------------------------")
 
-    predict(args.input_file, path_to_model_files, args.num_CpGs, args.output_file, num_samples, args.file_type)
+    predict(
+        input_file=args.input_file,
+        model_zip_path=args.model,
+        n=args.num_CpGs,
+        output_file=args.output_file,
+        num_samples=num_samples,
+        file_type=args.file_type,
+    )
+
 
 def entrypoint():
     try:
         main()
-    except Exception as e:
+    except Exception:
         import traceback
+
         print("\n❌ ERROR: An exception occurred in sturgeon-v2 CLI\n")
         traceback.print_exc()
         exit(1)
