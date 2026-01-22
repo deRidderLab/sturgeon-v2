@@ -3,7 +3,7 @@ This repository presents a pip installable software package to easily run Sturge
 
 ## Installation
 * Install using `pip install git+ssh://git@github.com/UMCUGenetics/sturgeon-v2.git`
-* Download the cns-v2 [zip file](https://www.dropbox.com/scl/fi/fla0j8i62xap6bpjofq3x/cns-v2.zip?rlkey=gk6hwqxjxl4v9uq0evfd9w599&st=rpg6fom4&dl=0)
+* Download the cns-v2 [zip file](https://drive.google.com/file/d/1opEUbGWtUCONWhlfrv9NfSuGM8pXj-D8/view?usp=share_link)
 
 ## Usage
 <pre>
