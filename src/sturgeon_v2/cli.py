@@ -44,7 +44,7 @@ def predict(
         with zipfile.ZipFile(model_zip_path, "r") as zf:
             zf.extractall(tmpdir)
 
-        model_root = os.path.join(tmpdir, "cns-v2")
+        model_root = os.path.join(tmpdir, model_zip_path.split('_')[-1].split('.')[0])
         model_path = os.path.join(model_root, "model.onnx")
 
         if not os.path.exists(model_path):
