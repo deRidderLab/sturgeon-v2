@@ -14,10 +14,11 @@ class SturgeonSubmodel(nn.Module):
             input_size,
             output_size,
             activation,
+            dropout,
             *args,
             **kwargs
     ):
-        super().__init__(*args, **kwargs)
+        super(SturgeonSubmodel, self).__init__(*args, **kwargs)
         
         self.input_size = input_size
         self.output_size = output_size
@@ -26,20 +27,26 @@ class SturgeonSubmodel(nn.Module):
         self.logit_layer = nn.Sequential(
             nn.Flatten(start_dim=1, end_dim=-1),
             nn.Linear(input_size, 256, bias=True),
-            nn.Dropout(0.5),
+            nn.Dropout(dropout),
             self.activation,
             nn.Linear(256, 128, bias=True),
-            nn.Dropout(0.5),
-            self.activation,
+            nn.Dropout(dropout),
+            self.activation
+        )
+
+        self.classification_layer = nn.Sequential(
             nn.Linear(128, output_size, bias=False)
         )
 
     def forward(self, x):
-        y = self.logit_layer(x)
+        z = self.logit_layer(x)
+        y = self.classification_layer(z)
+        
 
         output = {}
 
         output['y'] = y
+        output['embedding'] = z
 
         return output
 

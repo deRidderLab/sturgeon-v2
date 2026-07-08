@@ -14,7 +14,8 @@ dependencies = [
     "pandas>=2.0",
     "polars>=0.19",
     "pyyaml>=6.0",
-    "onnxruntime>=1.16"
+    "onnxruntime>=1.16",
+    "tqdm"
 ]
 
 [build-system]
