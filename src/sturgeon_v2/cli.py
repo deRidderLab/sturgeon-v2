@@ -4,6 +4,8 @@ import zipfile
 import tempfile
 import os
 import shutil
+import re
+
 
 import numpy as np
 import pandas as pd
@@ -68,9 +70,11 @@ def predict(
                 new_columns=["probe_id", "methylation_call"],
             )
         elif file_type == "bed":
-            bed_file = pl.read_csv(input_file, separator="\t")
-        elif file_type == "bed_carlo":
-            bed_file = pl.read_csv(input_file, separator=" ")
+            with open(input_file, "r") as f:
+                raw_text = f.read()
+            # collapse any run of whitespace (spaces, tabs, mixed) into a single tab
+            normalized = re.sub(r"[ \t]+", "\t", raw_text)
+            bed_file = pl.read_csv(io.StringIO(normalized), separator="\t")
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
 
@@ -235,20 +239,24 @@ def predict_directory(
             if not filename.endswith(ext):
                 continue
                 
-            file_path = os.path.join(input_dir, filename)
+            input_file = os.path.join(input_dir, filename)
             sample_name = filename[:-len(ext)]
 
             if file_type == "csv":
                 bed_file = pl.read_csv(
-                    file_path,
+                    input_file,
                     separator=",",
                     has_header=False,
                     new_columns=["probe_id", "methylation_call"],
                 )
             elif file_type == "bed":
-                bed_file = pl.read_csv(file_path, separator="\t")
-            elif file_type == "bed_carlo":
-                bed_file = pl.read_csv(file_path, separator=" ")
+                with open(input_file, "r") as f:
+                    raw_text = f.read()
+                # collapse any run of whitespace (spaces, tabs, mixed) into a single tab
+                normalized = re.sub(r"[ \t]+", "\t", raw_text)
+                bed_file = pl.read_csv(io.StringIO(normalized), separator="\t")
+            else:
+                raise ValueError(f"Unsupported file type: {file_type}")
 
             bed_file = bed_file.select(
                 [
