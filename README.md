@@ -8,7 +8,6 @@ This repository presents a pip installable software package to easily run Sturge
 
 ## Usage
 <pre>
-usage: sturgeon-v2 [-h] {single,multi} ...
 
 Sturgeon v2: Intraoperative methylation classification
 
