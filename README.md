@@ -20,7 +20,6 @@ Usage: sturgeon-v2 single/multi [-h] [-i INPUT_FILE] [-m MODEL] [-c NUM_CPGS] [-
                    [-f FILE_TYPE]
 
 Options:
-  -h, --help            show this help message and exit
   -i INPUT_FILE, --input_file INPUT_FILE
                         path to input file or directory
   -m MODEL, --model MODEL
