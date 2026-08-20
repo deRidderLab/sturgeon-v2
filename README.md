@@ -16,7 +16,7 @@ positional arguments:
     single        Predict on a single .bed or .csv file
     multi         Predict on a directory of .bed or .csv files
 
-Usage: sturgeon-v2 single/multi [-h] [-i INPUT_FILE] [-m MODEL] [-c NUM_CPGS] [-o OUTPUT_FILE] [-s NUM_SAMPLINGS]
+Usage: sturgeon-v2 single/multi [-i INPUT_FILE] [-m MODEL] [-c NUM_CPGS] [-o OUTPUT_FILE] [-s NUM_SAMPLINGS]
                    [-f FILE_TYPE]
 
 Options:
