@@ -8,13 +8,22 @@ This repository presents a pip installable software package to easily run Sturge
 
 ## Usage
 <pre>
-Usage: sturgeon-v2 [-h] [-i INPUT_FILE] [-m MODEL] [-c NUM_CPGS] [-o OUTPUT_FILE] [-s NUM_SAMPLINGS]
+usage: sturgeon-v2 [-h] {single,multi} ...
+
+Sturgeon v2: Intraoperative methylation classification
+
+positional arguments:
+  {single,multi}
+    single        Predict on a single .bed or .csv file
+    multi         Predict on a directory of .bed or .csv files
+
+Usage: sturgeon-v2 single/multi [-h] [-i INPUT_FILE] [-m MODEL] [-c NUM_CPGS] [-o OUTPUT_FILE] [-s NUM_SAMPLINGS]
                    [-f FILE_TYPE]
 
 Options:
   -h, --help            show this help message and exit
   -i INPUT_FILE, --input_file INPUT_FILE
-                        path to input file
+                        path to input file or directory
   -m MODEL, --model MODEL
                         specify path to model zip you want to use.
   -c NUM_CPGS, --num_CpGs NUM_CPGS
