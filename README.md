@@ -5,8 +5,6 @@
 Sturgeon V2 is the successor of [Sturgeon](https://github.com/UMCUGenetics/sturgeon), a neural network classifier for central nervous system (CNS) tumours based on sparse DNA methylation profiles, such as those obtained after only a few minutes of nanopore sequencing during surgery. This repository provides a pip-installable package to run Sturgeon V2 in a clinical setting.
 
 ## Table of contents
-
-- [What's new in V2](#whats-new-in-v2)
 - [Installation](#installation)
 - [Models](#models)
 - [Workflow overview](#workflow-overview)
@@ -15,9 +13,6 @@ Sturgeon V2 is the successor of [Sturgeon](https://github.com/UMCUGenetics/sturg
 - [Command-line reference](#command-line-reference)
 - [Output](#output)
 - [Interpreting results](#interpreting-results)
-- [Troubleshooting](#troubleshooting)
-- [Citation](#citation)
-- [License](#license)
 
 ## Installation
 
@@ -216,55 +211,3 @@ sturgeon-v2 {single,multi} -i INPUT -m MODEL -o OUTPUT [-f FILE_TYPE] [-c NUM_CP
 ## Output
 
 <!-- TODO: describe the output file: columns (one per class?), the calibrated score, which column holds the top prediction, number of CpGs used, and one row per sampling when -s > 1. A short example table would help. -->
-
-## Interpreting results
-
-<!-- TODO: add score thresholds for V2 (e.g. inconclusive / confident / high confidence), as the calibration differs from Sturgeon V1 and the V1 thresholds should not be assumed to apply. -->
-
-Sturgeon V2 is intended to support, not replace, the diagnostic process. Predictions should always be interpreted by qualified professionals in the context of histopathology, imaging and other clinical information.
-
-## Troubleshooting
-
-**Results look implausible or scores are low for all classes.**
-Check that the reads were aligned to T2T-CHM13v2.0 and not to `hg38`. Also check that the bed file contains a reasonable number of CpG sites.
-
-**Multiple samples were merged into one prediction.**
-`sturgeon inputtobed` combines all files in its input directory. Run it separately for each sample.
-
-**`pip install` over SSH fails with a permission error.**
-Make sure an SSH key is set up for your GitHub account, or use the HTTPS installation command instead.
-
-**Downloading a model from Google Drive gives an HTML file instead of a zip.**
-Download the model through a web browser, or use a tool such as [`gdown`](https://github.com/wkentaro/gdown).
-
-## Citation
-
-If you use Sturgeon V2, please cite:
-
-```
-TODO: add Sturgeon V2 citation
-```
-
-Sturgeon V2 builds on the original Sturgeon:
-
-```
-Vermeulen, C., Pagès-Gallego, M., Kester, L. et al. Ultra-fast deep-learned CNS tumour
-classification during surgery. Nature 622, 842–849 (2023).
-https://doi.org/10.1038/s41586-023-06615-2
-```
-
-The reference classification scheme is based on:
-
-```
-Capper, D., Jones, D.T.W., Sill, M. et al. DNA methylation-based classification of central
-nervous system tumours. Nature 555, 469–474 (2018). https://doi.org/10.1038/nature26000
-```
-
-## License
-
-<!-- TODO: add license (see LICENSE file) -->
-
-## Contact
-
-<!-- TODO: add contact details or point to GitHub issues -->
-For questions and bug reports, please open an issue on [GitHub](https://github.com/UMCUGenetics/sturgeon-v2/issues).
