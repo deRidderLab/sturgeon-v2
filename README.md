@@ -12,8 +12,6 @@ Sturgeon V2 is the successor of [Sturgeon](https://github.com/UMCUGenetics/sturg
 - [Step 2: Prediction](#step-2-prediction)
 - [Command-line reference](#command-line-reference)
 - [Output](#output)
-- [Interpreting results](#interpreting-results)
-- [Acknowledgements](#acknowledgements)
 
 ## Installation
 
