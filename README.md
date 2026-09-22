@@ -61,16 +61,6 @@ Verify the installation:
 sturgeon-v2 --help
 ```
 
-### Optional: support for Guppy BAM input
-
-Converting Guppy BAM files directly (`inputtobed -s guppy`) needs `pysam` and `modbampy`, which are not installed by default. This route is deprecated (see [Step 1](#step-1-preprocessing)); only install the extra if you need it:
-
-```bash
-pip install "sturgeon-v2[bam] @ git+ssh://git@github.com/UMCUGenetics/sturgeon-v2.git"
-```
-
-`modbampy` is no longer maintained and may not install on recent Python versions.
-
 ## Models
 
 Models are distributed as zip files and are passed to `sturgeon-v2` with the `-m/--model` option. Download a model and store it in a location of your choice; it does not need to be unpacked.
@@ -292,16 +282,8 @@ A tab-separated file with one row per input file:
 | Column | Description |
 |---|---|
 | `sample` | Input file name without its extension. |
-| `mixed class` | The class with the highest score, averaged over all samplings. |
-| `mixed score` | The averaged score of that class. |
+| `class` | The class with the highest score, averaged over all samplings. |
+| `score` | The averaged score of that class. |
 | `purity` | Reserved; currently left empty. |
 
-<!-- TODO: explain the naming "mixed class" / "mixed score" and what "purity" will contain -->
 
-## Interpreting results
-
-<!-- TODO: describe how to interpret the scores (e.g. confidence thresholds used in the clinic, recommended minimum number of CpG sites, and how to handle low-confidence or control-class predictions) -->
-
-## Acknowledgements
-
-The preprocessing code (`sturgeon-v2 inputtobed`) and the bundled probe location files are adapted from [Sturgeon](https://github.com/UMCUGenetics/sturgeon).
