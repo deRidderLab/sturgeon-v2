@@ -230,7 +230,7 @@ def predict_directory(
         print(f"Running predictions on directory: {input_dir}")
         print("-------------------------------")
 
-        valid_exts = {"csv": ".csv", "bed": ".bed", "bed_carlo": ".bed"}
+        valid_exts = {"csv": ".csv", "bed": ".bed"}
         ext = valid_exts.get(file_type, ".bed")
         
         results_list = []
@@ -316,8 +316,8 @@ def predict_directory(
             
             results_list.append({
                 "sample": sample_name,
-                "mixed class": class_names[best_idx],
-                "mixed score": avg_probs[best_idx],
+                "class": class_names[best_idx],
+                "score": avg_probs[best_idx],
                 "purity": "" 
             })
             
@@ -347,7 +347,7 @@ def main():
     parser_single.add_argument("-c", "--num_CpGs", help="Number of CpGs to use")
     parser_single.add_argument("-o", "--output_file", required=True, help="Path to save the output csv")
     parser_single.add_argument("-s", "--num_samplings", help="Number of subsamplings")
-    parser_single.add_argument("-f", "--file_type", required=True, help="Type of file (e.g., bed, csv, bed_carlo)")
+    parser_single.add_argument("-f", "--file_type", required=True, help="Type of file (e.g., bed, csv)")
 
     # Parser for `sturgeon-v2 multi`
     parser_multi = subparsers.add_parser("multi", help="Predict on a directory of .bed or .csv files")
@@ -356,9 +356,61 @@ def main():
     parser_multi.add_argument("-c", "--num_CpGs", help="Number of CpGs to use")
     parser_multi.add_argument("-o", "--output_file", required=True, help="Path to save the combined output tsv")
     parser_multi.add_argument("-s", "--num_samplings", help="Number of subsamplings")
-    parser_multi.add_argument("-f", "--file_type", required=True, help="Type of files (e.g., bed, csv, bed_carlo)")
+    parser_multi.add_argument("-f", "--file_type", required=True, help="Type of files (e.g., bed, csv)")
+
+    # Parser for `sturgeon-v2 inputtobed`
+    parser_bed = subparsers.add_parser(
+        "inputtobed",
+        help="Convert modkit methylation calls to a bed file",
+    )
+    parser_bed.add_argument("-i", "--input-path", required=True,
+                            help="Input file, or directory with input files (.txt for modkit/megalodon, .bam for guppy). "
+                                 "For modkit_pileup this must be a single file.")
+    parser_bed.add_argument("-o", "--output-path", required=True,
+                            help="Output directory (result: merged_probes_methyl_calls.bed). "
+                                 "For modkit_pileup this is the output bed file itself.")
+    parser_bed.add_argument("-s", "--source", required=True,
+                            choices=["modkit", "modkit_pileup", "megalodon", "guppy"],
+                            help="Tool that produced the input files")
+    ref_group = parser_bed.add_mutually_exclusive_group()
+    ref_group.add_argument("--reference-genome", choices=["chm13v2", "hg38"], default=None,
+                           help="Reference genome the reads were aligned to; selects the bundled probes file (default: chm13v2)")
+    ref_group.add_argument("--probes-file", default=None,
+                           help="Custom probes file with probe names and genomic locations (instead of --reference-genome)")
+    parser_bed.add_argument("--margin", type=int, default=25,
+                            help="Neighbouring methylation calls (bp) to consider when evaluating a probe location (default: 25)")
+    parser_bed.add_argument("--neg-threshold", type=float, default=0.3,
+                            help="Scores below this threshold are considered unmethylated (default: 0.3)")
+    parser_bed.add_argument("--pos-threshold", type=float, default=0.7,
+                            help="Scores above this threshold are considered methylated (default: 0.7)")
+    parser_bed.add_argument("--fivemc-code", default="m",
+                            help="One letter code used to annotate 5mC in modkit files (default: m)")
 
     args = parser.parse_args()
+
+    if args.command == "inputtobed":
+        import logging
+        from sturgeon_v2.inputtobed import filetobed
+
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+        print("---------------------------------------------------------------------")
+        print(f"Converting {args.source} methylation calls to bed")
+        print("---------------------------------------------------------------------")
+        bed_file = filetobed(
+            input_path=args.input_path,
+            output_path=args.output_path,
+            source=args.source,
+            probes_file=args.probes_file,
+            reference_genome=args.reference_genome,
+            margin=args.margin,
+            neg_threshold=args.neg_threshold,
+            pos_threshold=args.pos_threshold,
+            fivemc_code=args.fivemc_code,
+        )
+        print(f"Bed file saved to {bed_file}")
+        print("Run prediction with: sturgeon-v2 single -f bed -i " + bed_file + " -m MODEL_ZIP -o OUTPUT_CSV")
+        return
+
     num_samples = int(args.num_samplings) if args.num_samplings else 1
 
     print("---------------------------------------------------------------------")
