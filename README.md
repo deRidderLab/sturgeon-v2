@@ -25,14 +25,6 @@ The original Sturgeon package is **not** required: preprocessing (`inputtobed`) 
 
 ### Install Sturgeon V2
 
-We recommend installing into a fresh virtual environment:
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-python3 -m pip install --upgrade pip
-```
-
 Install directly from GitHub over SSH (requires an SSH key linked to your GitHub account):
 
 ```bash
