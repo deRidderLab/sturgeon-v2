@@ -15,7 +15,10 @@ where methylation_call is 1 (methylated) or 0 (unmethylated).
 import gzip
 import logging
 import os
+import shutil
+import tempfile
 import warnings
+import zipfile
 from copy import deepcopy
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -26,8 +29,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 SOURCES = ["modkit", "modkit_pileup", "megalodon", "guppy"]
-REFERENCE_GENOMES = ["chm13v2", "hg38"]
-DEFAULT_REFERENCE_GENOME = "chm13v2"
+MODEL_PROBES_FILENAME = "probe.bed"
 
 PROBE_COUNT_COLUMNS = ["methylation_calls", "unmethylation_calls", "total_calls"]
 BED_COLUMNS = ["chrom", "chromStart", "chromEnd", "methylation_call", "probe_id"]
@@ -36,18 +38,34 @@ BED_COLUMNS = ["chrom", "chromStart", "chromEnd", "methylation_call", "probe_id"
 # ---------------------------------------------------------------------
 # Probe file helpers
 # ---------------------------------------------------------------------
-def get_probes_file(reference_genome: str = DEFAULT_REFERENCE_GENOME) -> str:
-    """Return the path to the probes file bundled with the package."""
-    if reference_genome not in REFERENCE_GENOMES:
-        raise ValueError(
-            f"--reference-genome must be one of {REFERENCE_GENOMES}, "
-            f"given: {reference_genome}"
-        )
-    return os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "data",
-        f"probes_{reference_genome}.bed.gz",
-    )
+def extract_probes_from_model(model_zip: str, dest_dir: str) -> str:
+    """Extract the probes file (probe.bed) from a model zip into dest_dir.
+
+    This is the same probes file that ``sturgeon-v2 single``/``multi`` use, so
+    the probe IDs in the bed file always match the model.
+    """
+    if not os.path.isfile(model_zip):
+        raise ValueError(f"--model not found, given: {model_zip}")
+    if not zipfile.is_zipfile(model_zip):
+        raise ValueError(f"--model is not a zip file, given: {model_zip}")
+
+    with zipfile.ZipFile(model_zip, "r") as zf:
+        members = [
+            m for m in zf.namelist()
+            if os.path.basename(m) == MODEL_PROBES_FILENAME
+            and not m.startswith("__MACOSX/")
+        ]
+        if len(members) != 1:
+            raise ValueError(
+                f"Expected exactly one {MODEL_PROBES_FILENAME} in the model zip "
+                f"{model_zip}, found {len(members)}."
+            )
+        target = os.path.join(dest_dir, MODEL_PROBES_FILENAME)
+        with zf.open(members[0]) as src, open(target, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+
+    logger.info("Using probes file %s from model %s", members[0], model_zip)
+    return target
 
 
 def _open_text(path: str):
@@ -56,9 +74,22 @@ def _open_text(path: str):
     return open(path, "r")
 
 
+# Accepted column names in a probes file, mapped to the names used internally.
+_PROBE_COLUMN_ALIASES = {
+    "chr": ["chr", "chrom", "chromosome"],
+    "start": ["start", "chromStart"],
+    "end": ["end", "chromEnd"],
+    "ID_REF": ["ID_REF", "name", "probe_id"],
+}
+
+
 def read_probes_file(probes_file: str) -> pd.DataFrame:
-    """Read a probes file (space separated, or a '#'-header tab separated
-    samtools-style bed file). Plain or gzipped."""
+    """Read a probes file and return it with columns chr, start, end, ID_REF.
+
+    Accepts the probe.bed from a model zip, the original Sturgeon probes files
+    (space separated) and '#'-header samtools-style bed files. Plain or gzipped.
+    Chromosome names are stored without the 'chr' prefix (e.g. '1', 'X').
+    """
     with _open_text(probes_file) as handle:
         first_line = handle.readline()
 
@@ -68,8 +99,24 @@ def read_probes_file(probes_file: str) -> pd.DataFrame:
             probes_file, header=None, sep="\t", comment="#", names=column_header
         )
     else:
-        probes_df = pd.read_csv(probes_file, header=0, sep=" ")
+        probes_df = pd.read_csv(probes_file, header=0, sep=r"\s+")
 
+    rename = {}
+    for target, aliases in _PROBE_COLUMN_ALIASES.items():
+        found = [c for c in aliases if c in probes_df.columns]
+        if found:
+            rename[found[0]] = target
+        elif target != "end":
+            raise ValueError(
+                f"Probes file {probes_file} has no {target} column "
+                f"(accepted names: {aliases}). Columns found: {list(probes_df.columns)}"
+            )
+    probes_df = probes_df.rename(columns=rename)
+    if "end" not in probes_df.columns:
+        probes_df["end"] = probes_df["start"] + 1
+
+    probes_df["chr"] = probes_df["chr"].astype(str).str.replace(r"^chr", "", regex=True)
+    probes_df["ID_REF"] = probes_df["ID_REF"].astype(str)
     return probes_df
 
 
@@ -438,8 +485,8 @@ def filetobed(
     input_path: str,
     output_path: str,
     source: str,
+    model_zip: Optional[str] = None,
     probes_file: Optional[str] = None,
-    reference_genome: Optional[str] = None,
     margin: int = 25,
     neg_threshold: float = 0.3,
     pos_threshold: float = 0.7,
@@ -447,19 +494,45 @@ def filetobed(
 ) -> str:
     """Convert methylation calls to a sturgeon bed file.
 
-    Returns the path of the written bed file. For ``modkit_pileup``,
-    ``output_path`` is the bed file itself; for all other sources it is a
-    directory and the result is ``<output_path>/merged_probes_methyl_calls.bed``.
+    The probe locations are taken from the model zip (``probe.bed``), or from
+    a custom ``probes_file``. Returns the path of the written bed file. For
+    ``modkit_pileup``, ``output_path`` is the bed file itself; for all other
+    sources it is a directory and the result is
+    ``<output_path>/merged_probes_methyl_calls.bed``.
     """
     logger.info("File to bed program, source: %s", source)
 
-    if probes_file is None:
-        probes_file = get_probes_file(reference_genome or DEFAULT_REFERENCE_GENOME)
-    elif reference_genome is not None:
-        raise ValueError("Give either --probes-file or --reference-genome, not both.")
+    if (model_zip is None) == (probes_file is None):
+        raise ValueError("Give either --model or --probes-file (exactly one).")
 
-    if not os.path.exists(probes_file):
-        raise ValueError(f"--probes-file not found, given: {probes_file}")
+    tmpdir = None
+    try:
+        if model_zip is not None:
+            tmpdir = tempfile.mkdtemp(prefix="sturgeon_probes_")
+            probes_file = extract_probes_from_model(model_zip, tmpdir)
+        elif not os.path.exists(probes_file):
+            raise ValueError(f"--probes-file not found, given: {probes_file}")
+
+        return _filetobed(
+            input_path=input_path, output_path=output_path, source=source,
+            probes_file=probes_file, margin=margin, neg_threshold=neg_threshold,
+            pos_threshold=pos_threshold, fivemc_code=fivemc_code,
+        )
+    finally:
+        if tmpdir is not None:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _filetobed(
+    input_path: str,
+    output_path: str,
+    source: str,
+    probes_file: str,
+    margin: int,
+    neg_threshold: float,
+    pos_threshold: float,
+    fivemc_code: str,
+) -> str:
     if not 0 <= neg_threshold <= 1:
         raise ValueError(f"--neg-threshold must be between 0 and 1, given: {neg_threshold}")
     if not 0 <= pos_threshold <= 1:
