@@ -17,7 +17,7 @@ Sturgeon V2 is the successor of [Sturgeon](https://github.com/UMCUGenetics/sturg
 
 ### Requirements
 
-- Python >= 3.8
+- Python >= 3.10,<3.15
 - Linux or macOS <!-- TODO: confirm supported platforms -->
 - [modkit](https://github.com/nanoporetech/modkit) (recommended), for extracting methylation calls from BAM files
 
