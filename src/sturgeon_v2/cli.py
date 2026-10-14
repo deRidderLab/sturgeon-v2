@@ -372,11 +372,12 @@ def main():
     parser_bed.add_argument("-s", "--source", required=True,
                             choices=["modkit", "modkit_pileup", "megalodon", "guppy"],
                             help="Tool that produced the input files")
-    ref_group = parser_bed.add_mutually_exclusive_group()
-    ref_group.add_argument("--reference-genome", choices=["chm13v2", "hg38"], default=None,
-                           help="Reference genome the reads were aligned to; selects the bundled probes file (default: chm13v2)")
-    ref_group.add_argument("--probes-file", default=None,
-                           help="Custom probes file with probe names and genomic locations (instead of --reference-genome)")
+    probes_group = parser_bed.add_mutually_exclusive_group(required=True)
+    probes_group.add_argument("-m", "--model",
+                              help="Path to the model zip; its probe.bed is used for the probe locations "
+                                   "(use the same model as for prediction)")
+    probes_group.add_argument("--probes-file", default=None,
+                              help="Custom probes file with probe names and genomic locations (instead of --model)")
     parser_bed.add_argument("--margin", type=int, default=25,
                             help="Neighbouring methylation calls (bp) to consider when evaluating a probe location (default: 25)")
     parser_bed.add_argument("--neg-threshold", type=float, default=0.3,
@@ -400,15 +401,16 @@ def main():
             input_path=args.input_path,
             output_path=args.output_path,
             source=args.source,
+            model_zip=args.model,
             probes_file=args.probes_file,
-            reference_genome=args.reference_genome,
             margin=args.margin,
             neg_threshold=args.neg_threshold,
             pos_threshold=args.pos_threshold,
             fivemc_code=args.fivemc_code,
         )
         print(f"Bed file saved to {bed_file}")
-        print("Run prediction with: sturgeon-v2 single -f bed -i " + bed_file + " -m MODEL_ZIP -o OUTPUT_CSV")
+        model_hint = args.model if args.model else "MODEL_ZIP"
+        print(f"Run prediction with: sturgeon-v2 single -f bed -i {bed_file} -m {model_hint} -o OUTPUT_CSV")
         return
 
     num_samples = int(args.num_samplings) if args.num_samplings else 1
