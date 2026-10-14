@@ -53,7 +53,7 @@ sturgeon-v2 --help
 
 ## Models
 
-Models are distributed as zip files and are passed to `sturgeon-v2` with the `-m/--model` option. Download a model and store it in a location of your choice; it does not need to be unpacked.
+Models are distributed as zip files and are passed to `sturgeon-v2` with the `-m/--model` option, both for preprocessing (`inputtobed`) and for prediction (`single`/`multi`). Each model zip contains the probe locations (`probe.bed`) that the model was trained on, so preprocessing and prediction always use the same set of probes. Download a model and store it in a location of your choice; it does not need to be unpacked.
 
 | Model | Status | Download |
 |---|---|---|
@@ -64,6 +64,8 @@ Models are distributed as zip files and are passed to `sturgeon-v2` with the `-m
 
 > **Note:** `cns-v2.4a` is kept available only for reproducibility of earlier results. Use `cns-v2.4b` for all new analyses.
 
+> **Use the same model for preprocessing and prediction.** Pass the same model zip to `inputtobed` and to `single`/`multi`.
+
 ## Workflow overview
 
 ```
@@ -73,21 +75,21 @@ Nanopore BAM (with 5mC calls, aligned to T2T-CHM13v2.0)
         ▼
 modkit output (.txt)
         │
-        │  sturgeon-v2 inputtobed                     (Step 1b)
+        │  sturgeon-v2 inputtobed -m MODEL            (Step 1b)
         ▼
 Methylation calls on array probe sites (.bed)
         │
-        │  sturgeon-v2 single / multi                 (Step 2)
+        │  sturgeon-v2 single / multi -m MODEL        (Step 2)
         ▼
 Class scores per sample
 ```
 
 ## Step 1: Preprocessing
 
-Preprocessing is done with `sturgeon-v2 inputtobed`. This command is ported from the `inputtobed` utility of the original [Sturgeon](https://github.com/UMCUGenetics/sturgeon) and produces identical output, so `.bed` files previously created with `sturgeon inputtobed` can still be used with Sturgeon V2.
+Preprocessing is done with `sturgeon-v2 inputtobed`. This command is ported from the `inputtobed` utility of the original [Sturgeon](https://github.com/UMCUGenetics/sturgeon) and produces identical output, so `.bed` files previously created with `sturgeon inputtobed` can still be used with Sturgeon V2. The probe locations are read from the model zip (`-m`).
 
 > ⚠️ **Reference genome: only T2T-CHM13v2.0 is supported.**
-> Sturgeon V2 does **not** support `hg38`. Reads must be aligned to the [T2T-CHM13v2.0 reference genome](https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz), which is the default for `inputtobed`. Do **not** pass `--reference-genome hg38`. If your data is aligned to `hg38`, re-align it to T2T-CHM13v2.0 before preprocessing. Incorrectly aligned data will give wrong results without raising an error.
+> Sturgeon V2 does **not** support `hg38`. Reads must be aligned to the [T2T-CHM13v2.0 reference genome](https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz), which the probe locations in the model zip are based on. If your data is aligned to `hg38`, re-align it to T2T-CHM13v2.0 before preprocessing. Incorrectly aligned data will give wrong results without raising an error.
 
 ### 1a. Extract methylation calls with modkit
 
@@ -112,10 +114,10 @@ Alternatively, `modkit pileup` can be used to produce a single file of aggregate
 
 ### 1b. Convert to bed with `sturgeon-v2 inputtobed`
 
-For `modkit extract` output, pass the directory containing the `.txt` file(s):
+For `modkit extract` output, pass the directory containing the `.txt` file(s) and the model zip:
 
 ```bash
-sturgeon-v2 inputtobed -i sample1/modkit -o sample1/bed -s modkit
+sturgeon-v2 inputtobed -i sample1/modkit -o sample1/bed -s modkit -m models/cns-v2.4b.zip
 ```
 
 This writes `sample1/bed/merged_probes_methyl_calls.bed`, which is the input for [Step 2](#step-2-prediction). The output directory also contains intermediate files: one `<name>_probes_methyl_calls.txt` per input file and `merged_probes_methyl_calls.txt` with the summed call counts per probe.
@@ -123,14 +125,14 @@ This writes `sample1/bed/merged_probes_methyl_calls.bed`, which is the input for
 For `modkit pileup` output, pass a single pileup file; `-o` is then the output bed file itself:
 
 ```bash
-sturgeon-v2 inputtobed -i sample1/pileup.bed -o sample1/sample1.bed -s modkit_pileup
+sturgeon-v2 inputtobed -i sample1/pileup.bed -o sample1/sample1.bed -s modkit_pileup -m models/cns-v2.4b.zip
 ```
 
 An intermediate file with the same name plus `.tmp` is written next to it.
 
 > **One sample per run.** `inputtobed` merges all methylation calls from all `.txt` files in the input directory into a single output. If you have multiple samples, process each sample separately into its own output directory.
 
-> **Re-running in the same output directory.** For each input file, `inputtobed` skips processing if `<name>_probes_methyl_calls.txt` already exists in the output directory and reuses it. If input files have changed (for example, during live sequencing, or after changing `--margin` or the thresholds), use a new output directory or delete the old intermediate files first.
+> **Re-running in the same output directory.** For each input file, `inputtobed` skips processing if `<name>_probes_methyl_calls.txt` already exists in the output directory and reuses it. If input files have changed (for example, during live sequencing, or after changing `--margin`, the thresholds or the model), use a new output directory or delete the old intermediate files first.
 
 ## Step 2: Prediction
 
@@ -190,7 +192,7 @@ If `-c` is larger than the number of available CpG sites, all sites are used. Fo
 `sturgeon-v2` has three subcommands:
 
 ```
-sturgeon-v2 inputtobed -i INPUT_PATH -o OUTPUT_PATH -s SOURCE [options]
+sturgeon-v2 inputtobed -i INPUT_PATH -o OUTPUT_PATH -s SOURCE -m MODEL [options]
 sturgeon-v2 single     -i INPUT_FILE -m MODEL -o OUTPUT_FILE -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS]
 sturgeon-v2 multi      -i INPUT_DIR  -m MODEL -o OUTPUT_FILE -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS]
 ```
@@ -204,8 +206,8 @@ Run `sturgeon-v2 <subcommand> --help` for the full list of options.
 | `-i`, `--input-path` | Input file or directory. For `modkit`/`megalodon`, all `.txt` files in the directory are used; for `guppy`, all `.bam` files. For `modkit_pileup`, a single file. | — (required) |
 | `-o`, `--output-path` | Output directory. For `modkit_pileup`, the output `.bed` file. | — (required) |
 | `-s`, `--source` | Tool that produced the input: `modkit`, `modkit_pileup`, `megalodon` or `guppy`. | — (required) |
-| `--reference-genome` | Reference genome used for alignment. Only `chm13v2` is supported by Sturgeon V2 (see [Step 1](#step-1-preprocessing)). | `chm13v2` |
-| `--probes-file` | Custom probe location file, instead of the bundled one. Cannot be combined with `--reference-genome`. | Bundled CHM13v2 probes |
+| `-m`, `--model` | Path to the model zip file, e.g. `cns-v2.4b.zip`. The probe locations (`probe.bed`) are read from it. Use the same model as for prediction. | — (required, unless `--probes-file` is given) |
+| `--probes-file` | Custom probe location file, instead of the one in the model zip. Cannot be combined with `-m`. | — |
 | `--margin` | Distance (bp) around each probe within which methylation calls are considered. | `25` |
 | `--neg-threshold` | Calls with a score below this value are counted as unmethylated. | `0.3` |
 | `--pos-threshold` | Calls with a score above this value are counted as methylated. | `0.7` |
@@ -269,5 +271,3 @@ A tab-separated file with one row per input file:
 | `class` | The class with the highest score, averaged over all samplings. |
 | `score` | The averaged score of that class. |
 | `purity` | Reserved; currently left empty. |
-
-
