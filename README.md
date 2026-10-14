@@ -132,12 +132,6 @@ An intermediate file with the same name plus `.tmp` is written next to it.
 
 > **Re-running in the same output directory.** For each input file, `inputtobed` skips processing if `<name>_probes_methyl_calls.txt` already exists in the output directory and reuses it. If input files have changed (for example, during live sequencing, or after changing `--margin` or the thresholds), use a new output directory or delete the old intermediate files first.
 
-### Deprecated input sources
-
-`inputtobed` also accepts Megalodon output (`-s megalodon`) and Guppy BAM files (`-s guppy`, requires the [optional `bam` extra](#optional-support-for-guppy-bam-input)). Megalodon is deprecated by Oxford Nanopore, and Guppy BAM parsing relies on `modbampy`, which is deprecated and may give wrong results with newer Guppy versions. Use modkit whenever possible.
-
-For Guppy BAM files, do not use the `.bai` index files produced by Guppy, as they are not compatible. `inputtobed` creates compatible index files itself when none are present.
-
 ## Step 2: Prediction
 
 Sturgeon V2 has two prediction modes:
