@@ -7,6 +7,8 @@ Ported from the ``inputtobed`` utility of the original Sturgeon package
 sturgeon/callmapping.py). The mapping logic is unchanged; the code has been
 updated for pandas >= 2 / numpy >= 2 and the per-probe loop is vectorised.
 
+Only the final bed file is written; all intermediate results stay in memory.
+
 Output bed columns (tab separated, with header):
     chrom  chromStart  chromEnd  methylation_call  probe_id
 where methylation_call is 1 (methylated) or 0 (unmethylated).
@@ -19,8 +21,6 @@ import shutil
 import tempfile
 import warnings
 import zipfile
-from copy import deepcopy
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -30,9 +30,16 @@ logger = logging.getLogger(__name__)
 
 SOURCES = ["modkit", "modkit_pileup", "megalodon", "guppy"]
 MODEL_PROBES_FILENAME = "probe.bed"
+MERGED_BED_FILENAME = "merged_probes_methyl_calls.bed"
 
+PROBE_COLUMNS = ["chr", "start", "end", "ID_REF"]
 PROBE_COUNT_COLUMNS = ["methylation_calls", "unmethylation_calls", "total_calls"]
 BED_COLUMNS = ["chrom", "chromStart", "chromEnd", "methylation_call", "probe_id"]
+
+_CHROM_ORDER = {
+    **{str(i): i for i in range(1, 23)},
+    "X": 23, "Y": 24, "M": 25, "MT": 25,
+}
 
 
 # ---------------------------------------------------------------------
@@ -89,6 +96,7 @@ def read_probes_file(probes_file: str) -> pd.DataFrame:
     Accepts the probe.bed from a model zip, the original Sturgeon probes files
     (space separated) and '#'-header samtools-style bed files. Plain or gzipped.
     Chromosome names are stored without the 'chr' prefix (e.g. '1', 'X').
+    Any other columns in the file (score, strand, ...) are dropped.
     """
     with _open_text(probes_file) as handle:
         first_line = handle.readline()
@@ -96,10 +104,11 @@ def read_probes_file(probes_file: str) -> pd.DataFrame:
     if first_line.startswith("#"):
         column_header = first_line.lstrip("#").rstrip("\n").split("\t")
         probes_df = pd.read_csv(
-            probes_file, header=None, sep="\t", comment="#", names=column_header
+            probes_file, header=None, sep="\t", comment="#", names=column_header,
+            dtype=str,
         )
     else:
-        probes_df = pd.read_csv(probes_file, header=0, sep=r"\s+")
+        probes_df = pd.read_csv(probes_file, header=0, sep=r"\s+", dtype=str)
 
     rename = {}
     for target, aliases in _PROBE_COLUMN_ALIASES.items():
@@ -112,12 +121,15 @@ def read_probes_file(probes_file: str) -> pd.DataFrame:
                 f"(accepted names: {aliases}). Columns found: {list(probes_df.columns)}"
             )
     probes_df = probes_df.rename(columns=rename)
-    if "end" not in probes_df.columns:
+
+    probes_df["start"] = probes_df["start"].astype(np.int64)
+    if "end" in probes_df.columns:
+        probes_df["end"] = probes_df["end"].astype(np.int64)
+    else:
         probes_df["end"] = probes_df["start"] + 1
 
-    probes_df["chr"] = probes_df["chr"].astype(str).str.replace(r"^chr", "", regex=True)
-    probes_df["ID_REF"] = probes_df["ID_REF"].astype(str)
-    return probes_df
+    probes_df["chr"] = probes_df["chr"].str.replace(r"^chr", "", regex=True)
+    return probes_df[PROBE_COLUMNS].copy()
 
 
 def _validate_header(file_path: str, mandatory_columns: List[str], name: str):
@@ -207,12 +219,11 @@ def map_methyl_calls_to_probes_chr(
     methylation_calls += (final_score == 1)
     unmethylation_calls += (final_score == -1)
 
-    probes_df = probes_df.assign(
+    return probes_df.assign(
         methylation_calls=methylation_calls,
         unmethylation_calls=unmethylation_calls,
         total_calls=methylation_calls + unmethylation_calls,
     )
-    return probes_df
 
 
 def _calls_to_probes(
@@ -222,18 +233,21 @@ def _calls_to_probes(
     neg_threshold: float,
     pos_threshold: float,
 ) -> pd.DataFrame:
-    """Map a dataframe with columns chr ('chrN'), reference_pos, score onto
-    all probes, chromosome by chromosome."""
+    """Map a dataframe with columns chr, reference_pos, score onto all probes,
+    chromosome by chromosome. Chromosome names may have a 'chr' prefix or not."""
     probes_df = read_probes_file(probes_file)
     for column in PROBE_COUNT_COLUMNS:
         probes_df[column] = 0
 
+    calls_df = calls_df.assign(
+        chr=calls_df["chr"].astype(str).str.replace(r"^chr", "", regex=True)
+    )
+
     calls_per_probe = []
     for chrom in np.unique(probes_df["chr"]):
-        chrom = chrom.item() if hasattr(chrom, "item") else chrom
         calls_per_probe_chr = map_methyl_calls_to_probes_chr(
             probes_df=probes_df[probes_df["chr"] == chrom],
-            methyl_calls_per_read=calls_df[calls_df["chr"] == f"chr{chrom}"],
+            methyl_calls_per_read=calls_df[calls_df["chr"] == chrom],
             margin=margin,
             neg_threshold=neg_threshold,
             pos_threshold=pos_threshold,
@@ -244,87 +258,71 @@ def _calls_to_probes(
             calls_per_probe_chr["total_calls"].sum(), chrom,
         )
 
-    return pd.concat(calls_per_probe)
+    return pd.concat(calls_per_probe, ignore_index=True)
 
 
-def merge_probes_methyl_calls(file_list: List[str], output_file: str) -> pd.DataFrame:
-    """Sum the probe call counts of several files into one."""
-    output_df = None
-    for file in file_list:
-        logger.info("Merging file: %s", file)
-        df = pd.read_csv(file, header=0, sep="\t")
-        df = df.sort_values(["chr", "start"]).reset_index(drop=True)
-        if output_df is None:
-            output_df = df
-            continue
-        for column in PROBE_COUNT_COLUMNS:
-            output_df[column] += df[column]
-
-    if output_df is None:
-        raise ValueError("No valid input files were found to merge.")
-
-    logger.info("Saving merged file: %s", output_file)
-    output_df.to_csv(output_file, header=True, index=False, sep="\t")
-    return output_df
-
-
-def probes_methyl_calls_to_bed(input_file: str, output_file: str) -> pd.DataFrame:
-    """Turn probe call counts into a bed file with one binary call per probe.
-    Probes with equal methylated/unmethylated counts are dropped."""
-    probes_df = pd.read_csv(input_file, header=0, sep="\t")
-    probes_df = probes_df[probes_df["total_calls"] > 0]
-    probes_df = probes_df[
-        probes_df["methylation_calls"] != probes_df["unmethylation_calls"]
+def _probe_counts_to_bed(calls_per_probe: pd.DataFrame) -> pd.DataFrame:
+    """Turn probe call counts into one binary call per probe.
+    Probes without calls, or with equal methylated/unmethylated counts, are
+    dropped. Rows are sorted 1..22, X, Y, then by position."""
+    df = calls_per_probe[
+        (calls_per_probe["total_calls"] > 0)
+        & (calls_per_probe["methylation_calls"] != calls_per_probe["unmethylation_calls"])
     ]
 
     bed_df = pd.DataFrame({
-        "chrom": probes_df["chr"],
-        "chromStart": probes_df["start"],
-        "chromEnd": probes_df["end"],
+        "chrom": df["chr"].astype(str),
+        "chromStart": df["start"],
+        "chromEnd": df["end"],
         "methylation_call": (
-            probes_df["methylation_calls"] > probes_df["unmethylation_calls"]
+            df["methylation_calls"] > df["unmethylation_calls"]
         ).astype(int),
-        "probe_id": probes_df["ID_REF"],
+        "probe_id": df["ID_REF"],
     })
 
+    key = bed_df["chrom"].map(_CHROM_ORDER).fillna(99)
+    return (
+        bed_df.assign(_k=key)
+        .sort_values(["_k", "chromStart"], kind="stable")
+        .drop(columns="_k")
+        .reset_index(drop=True)[BED_COLUMNS]
+    )
+
+
+def _write_bed(bed_df: pd.DataFrame, output_file: str) -> None:
     logger.info("Total measured array CpG sites: %s", bed_df.shape[0])
     logger.info("Saving bed file to: %s", output_file)
     bed_df.to_csv(output_file, header=True, index=False, sep="\t")
-    return bed_df
 
 
-def _per_file_then_merge(
+def _files_to_bed(
     input_files: List[str],
     output_path: str,
     file_to_calls,
     **kwargs,
-):
-    """Shared driver: per input file compute probe calls (cached as
-    ``<name>_probes_methyl_calls.txt``), then merge all and write the bed."""
-    output_files = []
+) -> str:
+    """Shared driver: compute probe call counts per input file in memory, sum
+    them over all files and write only the final bed file."""
+    all_calls = []
     for input_file in input_files:
-        name = Path(input_file).stem
-        output_file = os.path.join(output_path, name + "_probes_methyl_calls.txt")
-
-        if os.path.exists(output_file):
-            logger.info("Skipping, probe_methyl_calls exists: %s", output_file)
-            output_files.append(output_file)
-            continue
-
         logger.info("Getting methylation calls from: %s", input_file)
-        calls_per_probe = file_to_calls(input_file=input_file, output_path=output_path, **kwargs)
+        calls_per_probe = file_to_calls(input_file=input_file, **kwargs)
         if calls_per_probe is None:
             logger.info("File processing gave an error, skipping: %s", input_file)
             continue
+        all_calls.append(calls_per_probe)
 
-        calls_per_probe.to_csv(output_file, header=True, index=False, sep="\t")
-        output_files.append(output_file)
+    if not all_calls:
+        raise ValueError("No valid input files were found.")
 
-    merged_output_file = os.path.join(output_path, "merged_probes_methyl_calls.txt")
-    merge_probes_methyl_calls(output_files, merged_output_file)
+    merged = (
+        pd.concat(all_calls, ignore_index=True)
+        .groupby(PROBE_COLUMNS, as_index=False, sort=False)[PROBE_COUNT_COLUMNS]
+        .sum()
+    )
 
-    bed_output_file = os.path.join(output_path, "merged_probes_methyl_calls.bed")
-    probes_methyl_calls_to_bed(merged_output_file, bed_output_file)
+    bed_output_file = os.path.join(output_path, MERGED_BED_FILENAME)
+    _write_bed(_probe_counts_to_bed(merged), bed_output_file)
     return bed_output_file
 
 
@@ -343,7 +341,9 @@ def modkit_file_to_calls(
     """``modkit extract`` output (per read calls) -> probe call counts."""
     usecols = ["read_id", "chrom", "ref_position", "mod_qual", "mod_code",
                "canonical_base", "modified_primary_base"]
-    modkit_df = pd.read_csv(input_file, sep="\t", header=0, usecols=usecols)
+    modkit_df = pd.read_csv(
+        input_file, sep="\t", header=0, usecols=usecols, dtype={"chrom": str}
+    )
 
     modkit_df = modkit_df[
         (modkit_df["mod_code"] == fivemc_code)
@@ -370,7 +370,7 @@ def mega_file_to_calls(
     **_,
 ) -> pd.DataFrame:
     """Megalodon per-read modified base calls -> probe call counts."""
-    mega_calls = pd.read_csv(input_file, header=0, sep="\t")
+    mega_calls = pd.read_csv(input_file, header=0, sep="\t", dtype={"chrm": str})
     mega_calls = mega_calls.rename(columns={"chrm": "chr", "pos": "reference_pos"})
     mega_calls["score"] = np.exp(mega_calls["mod_log_prob"])
 
@@ -380,15 +380,13 @@ def mega_file_to_calls(
 
 def bam_file_to_calls(
     input_file: str,
-    output_path: str,
     probes_file: str,
     margin: int = 25,
     neg_threshold: float = 0.3,
     pos_threshold: float = 0.7,
     **_,
 ) -> pd.DataFrame:
-    """Guppy bam with MM/ML tags -> probe call counts (needs modbampy).
-    Also writes ``<name>_read_methyl_calls.txt`` like the original tool."""
+    """Guppy bam with MM/ML tags -> probe call counts (needs modbampy)."""
     try:
         from modbampy import ModBam
     except ImportError as e:
@@ -398,30 +396,24 @@ def bam_file_to_calls(
         ) from e
 
     probes_df = read_probes_file(probes_file)
-    results = {"read_id": [], "chr": [], "reference_pos": [], "strand": [], "score": []}
+    results = {"chr": [], "reference_pos": [], "score": []}
 
     for chrom in np.unique(probes_df["chr"]):
         chromosome = f"chr{chrom}"
         with ModBam(input_file) as bam:
             for read in bam.reads(chromosome, 0, 250000000):
                 for pos_mod in read.mod_sites:
-                    read_id, reference_pos, _, strand, _, _, _, score = pos_mod
+                    _, reference_pos, _, _, _, _, _, score = pos_mod
                     if reference_pos == -1:
                         continue
-                    results["read_id"].append(read_id)
                     results["chr"].append(chromosome)
                     results["reference_pos"].append(reference_pos)
-                    results["strand"].append(strand)
                     results["score"].append((1 + score) / 256)
 
-    calls_per_read = pd.DataFrame(results).sort_values(["reference_pos"])
-    calls_per_read.to_csv(
-        os.path.join(output_path, Path(input_file).stem + "_read_methyl_calls.txt"),
-        header=True, index=False, sep="\t",
-    )
-
     logger.info("Processing bam file: %s", input_file)
-    return _calls_to_probes(calls_per_read, probes_file, margin, neg_threshold, pos_threshold)
+    return _calls_to_probes(
+        pd.DataFrame(results), probes_file, margin, neg_threshold, pos_threshold
+    )
 
 
 def modkit_pileup_file_to_bed(
@@ -440,7 +432,7 @@ def modkit_pileup_file_to_bed(
         "n_mod", "n_canonical", "n_othermod", "n_delete", "n_fail", "n_diff",
         "n_nocall",
     ]
-    modkit_df = pd.read_csv(input_file, sep=r"\s+", header=None)
+    modkit_df = pd.read_csv(input_file, sep=r"\s+", header=None, dtype={0: str})
 
     if modkit_df.shape[1] != len(column_names):
         raise ValueError(
@@ -462,19 +454,11 @@ def modkit_pileup_file_to_bed(
     calls_per_probe = _calls_to_probes(
         modkit_df, probes_file, margin, neg_threshold, pos_threshold
     )
-    calls_per_probe.to_csv(output_file + ".tmp", header=True, index=False, sep="\t")
 
-    # Same as the original tool: a single file gives each probe at most one
-    # vote, so methylation_calls is already 0 (unmethylated) or 1 (methylated).
-    calls_per_probe = calls_per_probe[calls_per_probe["total_calls"] > 0]
-    bed_df = calls_per_probe.rename(columns={
-        "chr": "chrom", "start": "chromStart", "end": "chromEnd",
-        "ID_REF": "probe_id", "methylation_calls": "methylation_call",
-    })[BED_COLUMNS]
-
-    logger.info("Total measured array CpG sites: %s", bed_df.shape[0])
-    logger.info("Saving bed file to: %s", output_file)
-    bed_df.to_csv(output_file, header=True, index=False, sep="\t")
+    # A single file gives each probe at most one vote, so this gives the same
+    # result as the original tool.
+    bed_df = _probe_counts_to_bed(calls_per_probe)
+    _write_bed(bed_df, output_file)
     return bed_df
 
 
@@ -498,7 +482,7 @@ def filetobed(
     a custom ``probes_file``. Returns the path of the written bed file. For
     ``modkit_pileup``, ``output_path`` is the bed file itself; for all other
     sources it is a directory and the result is
-    ``<output_path>/merged_probes_methyl_calls.bed``.
+    ``<output_path>/merged_probes_methyl_calls.bed``. No other files are written.
     """
     logger.info("File to bed program, source: %s", source)
 
@@ -577,7 +561,7 @@ def _filetobed(
             else:
                 logger.error("File %s did not pass modkit validation: %s", f, msg)
         logger.info("Found a total of %s modkit files", len(input_files))
-        return _per_file_then_merge(
+        return _files_to_bed(
             input_files, output_path, modkit_file_to_calls,
             fivemc_code=fivemc_code, **common,
         )
@@ -596,7 +580,7 @@ def _filetobed(
             else:
                 logger.error("File %s did not pass megalodon validation: %s", f, msg)
         logger.info("Found a total of %s megalodon files", len(input_files))
-        return _per_file_then_merge(input_files, output_path, mega_file_to_calls, **common)
+        return _files_to_bed(input_files, output_path, mega_file_to_calls, **common)
 
     # source == "guppy"
     warnings.warn(
@@ -617,4 +601,4 @@ def _filetobed(
             logger.info("Generating index file: %s.bai", bam_file)
             pysam.index(bam_file)
     logger.info("Found a total of %s bam files", len(input_files))
-    return _per_file_then_merge(input_files, output_path, bam_file_to_calls, **common)
+    return _files_to_bed(input_files, output_path, bam_file_to_calls, **common)
