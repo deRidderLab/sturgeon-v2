@@ -230,15 +230,17 @@ def predict(
 
         summary = summarise(sample_name, model.class_names, result)
 
+        # raw scores: one row per sampling, one column per class
         _ensure_parent_dir(output_file)
-        pd.DataFrame([summary], columns=SUMMARY_COLUMNS).to_csv(
-            output_file, sep="\t", index=False
-        )
+        df = pd.DataFrame(result, columns=model.class_names)
+        df["probes"] = n_used
+        df.to_csv(output_file, index=False)
 
         print("-------------------------------")
         print(f"Sample:          {summary['sample']}")
         print(f"Predicted class: {summary['class']}")
-        print(f"Score:           {summary['score']:.4f}")
+        print(f"Score:           {summary['score']:.4f}"
+              + (f" (mean over {num_samples} samplings)" if num_samples > 1 else ""))
         print(f"CpG sites used:  {n_used}")
         print("-------------------------------")
         print(f"Results saved to {output_file}")
@@ -347,7 +349,7 @@ def main():
     parser_single.add_argument("-i", "--input_file", required=True, help="Input file path")
     parser_single.add_argument("-m", "--model", required=True, help="Path to the model zip")
     parser_single.add_argument("-c", "--num_CpGs", help="Number of CpGs to use")
-    parser_single.add_argument("-o", "--output_file", required=True, help="Path to save the output tsv")
+    parser_single.add_argument("-o", "--output_file", required=True, help="Path to save the output csv (scores of all classes per sampling)")
     parser_single.add_argument("-s", "--num_samplings", help="Number of subsamplings")
     parser_single.add_argument("-f", "--file_type", required=True, choices=["bed", "csv"], help="Type of file")
     parser_single.add_argument("-p", "--plot", default=None,
