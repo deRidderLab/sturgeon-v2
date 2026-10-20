@@ -122,7 +122,7 @@ Name the output file after the sample: `inputtobed` uses the file name for the b
 sturgeon-v2 inputtobed -i modkit/sample1.txt -o bed_files/sample1.bed -m models/cns-v2.4b.zip
 ```
 
-**Several samples** (for `multi`): pass a directory; every `.txt` or `.tsv` modkit file in it is converted to its own `<name>.bed` in the output directory.
+**Several samples** (for `multi`): pass a directory; every `.txt` (or `.tsv`) modkit file in it is converted separately to a bed file with the same name, so `sample1.txt` becomes `sample1.bed` in the output directory. Files are never merged.
 
 ```bash
 sturgeon-v2 inputtobed -i modkit/ -o bed_files/ -m models/cns-v2.4b.zip
@@ -150,8 +150,11 @@ sturgeon-v2 single \
     -i bed_files/sample1.bed \
     -m models/cns-v2.4b.zip \
     -f bed \
-    -o results/sample1_prediction.csv
+    -o results/sample1_prediction.tsv \
+    -p results/sample1_prediction.png
 ```
+
+The predicted class, its score and the number of CpG sites used are also printed in the terminal.
 
 ### Predict a directory of samples
 
@@ -162,10 +165,18 @@ sturgeon-v2 multi \
     -i bed_files/ \
     -m models/cns-v2.4b.zip \
     -f bed \
-    -o results/predictions.tsv
+    -o results/predictions.tsv \
+    -p results/plots/
 ```
 
 In `multi` mode, `-o` is a single tab-separated output file covering all samples.
+
+### Plots
+
+With `-p`, `single` and `multi` also save plots: one per sample, with a vertical bar for every class in the order of the model's `classification_system.yaml`. Each bar is the score of that class, averaged over all samplings; the title shows the predicted class, its score and the number of CpG sites used. Class colors are taken from the same yaml file; classes without a color are shown in grey.
+
+- `single`: `-p` is the plot file. Plots are always saved as `.png`; another extension is replaced by `.png`.
+- `multi`: `-p` is a directory, which is created if needed. It gets one `<sample>.png` per input file.
 
 ### Simulating lower coverage (subsampling)
 
@@ -180,7 +191,8 @@ sturgeon-v2 single \
     -f bed \
     -c 1000 \
     -s 10 \
-    -o results/sample1_1000cpgs.csv
+    -o results/sample1_1000cpgs.tsv \
+    -p results/sample1_1000cpgs.png
 ```
 
 If `-c` is larger than the number of available CpG sites, all sites are used. For routine clinical use, leave `-c` unset so that all available CpG sites are used.
@@ -191,8 +203,8 @@ If `-c` is larger than the number of available CpG sites, all sites are used. Fo
 
 ```
 sturgeon-v2 inputtobed -i INPUT_PATH -o OUTPUT_PATH -m MODEL
-sturgeon-v2 single     -i INPUT_FILE -m MODEL -o OUTPUT_FILE -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS]
-sturgeon-v2 multi      -i INPUT_DIR  -m MODEL -o OUTPUT_FILE -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS]
+sturgeon-v2 single     -i INPUT_FILE -m MODEL -o OUTPUT_FILE -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS] [-p PLOT_FILE]
+sturgeon-v2 multi      -i INPUT_DIR  -m MODEL -o OUTPUT_FILE -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS] [-p PLOT_DIR]
 ```
 
 Run `sturgeon-v2 <subcommand> --help` for the full list of options.
@@ -213,10 +225,11 @@ The conversion uses fixed settings, the defaults of the original Sturgeon: for e
 |---|---|---|
 | `-i`, `--input_file` (`single`)<br>`-i`, `--input_dir` (`multi`) | Path to the input file (`single`) or to a directory of input files (`multi`). | — (required) |
 | `-m`, `--model` | Path to the model zip file, e.g. `cns-v2.4b.zip`. | — (required) |
-| `-o`, `--output_file` | Path of the output file (CSV for `single`, tab-separated for `multi`). | — (required) |
+| `-o`, `--output_file` | Path of the tab-separated output file. | — (required) |
 | `-f`, `--file_type` | Input file type: `bed` or `csv`. In `multi` mode, only files with the matching extension are used. | — (required) |
 | `-c`, `--num_CpGs` | Number of CpG sites to randomly sample. | All available sites |
 | `-s`, `--num_samplings` | Number of random samplings of size `num_CpGs`. | `1` |
+| `-p`, `--plot` (`single`)<br>`-p`, `--plot_dir` (`multi`) | `.png` plot file (`single`) or directory for one plot per sample (`multi`); see [Plots](#plots). | No plots |
 
 ### Input formats
 
@@ -240,26 +253,20 @@ In both formats, probes that are not listed are treated as not measured.
 
 ## Output
 
-### `single`
-
-A comma-separated file with one row per sampling (so a single row when `-s` is not set), and the following columns:
-
-| Column | Description |
-|---|---|
-| one column per class | The calibrated score for that class. Scores in each row sum to 1. The class with the highest score is the prediction. |
-| `probes` | Number of CpG sites used for the prediction. |
-
-Scores are calibrated for sequencing depth: the model output is scaled with a temperature that depends on the number of CpG sites used, before being converted to probabilities.
-
-<!-- TODO: add a short example table with real class names from cns-v2.4b -->
-
-### `multi`
-
-A tab-separated file with one row per input file:
+`single` and `multi` write the same tab-separated format: one row per sample (one row in total for `single`), with the following columns:
 
 | Column | Description |
 |---|---|
 | `sample` | Input file name without its extension. |
-| `class` | The class with the highest score, averaged over all samplings. |
+| `class` | The predicted class: the class with the highest score, averaged over all samplings. |
 | `score` | The averaged score of that class. |
-| `purity` | Reserved; currently left empty. |
+
+Example:
+
+```
+sample	class	score
+sample1	MB_SHH	0.9731
+sample2	GBM_RTK2	0.8812
+```
+
+Scores are calibrated for sequencing depth: the model output is scaled with a temperature that depends on the number of CpG sites used, before being converted to probabilities. The scores of all classes sum to 1.
