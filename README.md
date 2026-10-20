@@ -150,11 +150,11 @@ sturgeon-v2 single \
     -i bed_files/sample1.bed \
     -m models/cns-v2.4b.zip \
     -f bed \
-    -o results/sample1_prediction.csv \
-    -p results/sample1_prediction.png
+    -o results/sample1 \
+    -p
 ```
 
-The predicted class, its score and the number of CpG sites used are also printed in the terminal.
+This writes `results/sample1/result.txt` and, because of `-p`, `results/sample1/plot.png`. The predicted class, its score and the number of CpG sites used are also printed in the terminal.
 
 ### Predict a directory of samples
 
@@ -165,18 +165,18 @@ sturgeon-v2 multi \
     -i bed_files/ \
     -m models/cns-v2.4b.zip \
     -f bed \
-    -o results/predictions.tsv \
-    -p results/plots/
+    -o results/all_samples \
+    -p
 ```
 
-In `multi` mode, `-o` is a single tab-separated output file covering all samples.
+This writes `results/all_samples/result.txt`, one file covering all samples, and, because of `-p`, one plot per sample in `results/all_samples/plots/` (`sample1.png`, `sample2.png`, …).
 
 ### Plots
 
-With `-p`, `single` and `multi` also save plots: one per sample, with a vertical bar for every class in the order of the model's `classification_system.yaml`. Each bar is the score of that class, averaged over all samplings; the title shows the predicted class, its score and the number of CpG sites used. Class colors are taken from the same yaml file; classes without a color are shown in grey.
+With the `-p` flag, `single` and `multi` also save plots in the output directory: one per sample, with a vertical bar for every class in the order of the model's `classification_system.yaml`. Each bar is the score of that class, averaged over all samplings; the title shows the predicted class, its score and the number of CpG sites used. Class colors are taken from the same yaml file; classes without a color are shown in grey.
 
-- `single`: `-p` is the plot file. Plots are always saved as `.png`; another extension is replaced by `.png`.
-- `multi`: `-p` is a directory, which is created if needed. It gets one `<sample>.png` per input file.
+- `single`: `<output_dir>/plot.png`.
+- `multi`: `<output_dir>/plots/<sample>.png`, one per input file.
 
 ### Simulating lower coverage (subsampling)
 
@@ -191,8 +191,8 @@ sturgeon-v2 single \
     -f bed \
     -c 1000 \
     -s 10 \
-    -o results/sample1_1000cpgs.csv \
-    -p results/sample1_1000cpgs.png
+    -o results/sample1_1000cpgs \
+    -p
 ```
 
 If `-c` is larger than the number of available CpG sites, all sites are used. For routine clinical use, leave `-c` unset so that all available CpG sites are used.
@@ -203,8 +203,8 @@ If `-c` is larger than the number of available CpG sites, all sites are used. Fo
 
 ```
 sturgeon-v2 inputtobed -i INPUT_PATH -o OUTPUT_PATH -m MODEL
-sturgeon-v2 single     -i INPUT_FILE -m MODEL -o OUTPUT_FILE -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS] [-p PLOT_FILE]
-sturgeon-v2 multi      -i INPUT_DIR  -m MODEL -o OUTPUT_FILE -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS] [-p PLOT_DIR]
+sturgeon-v2 single     -i INPUT_FILE -m MODEL -o OUTPUT_DIR -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS] [-p]
+sturgeon-v2 multi      -i INPUT_DIR  -m MODEL -o OUTPUT_DIR -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS] [-p]
 ```
 
 Run `sturgeon-v2 <subcommand> --help` for the full list of options.
@@ -225,11 +225,11 @@ The conversion uses fixed settings, the defaults of the original Sturgeon: for e
 |---|---|---|
 | `-i`, `--input_file` (`single`)<br>`-i`, `--input_dir` (`multi`) | Path to the input file (`single`) or to a directory of input files (`multi`). | — (required) |
 | `-m`, `--model` | Path to the model zip file, e.g. `cns-v2.4b.zip`. | — (required) |
-| `-o`, `--output_file` | Path of the output file: comma-separated with all class scores (`single`), or tab-separated with one summary row per sample (`multi`). | — (required) |
+| `-o`, `--output_dir` | Output directory, created if needed. The results are written to `result.txt` in it; see [Output](#output). | — (required) |
 | `-f`, `--file_type` | Input file type: `bed` or `csv`. In `multi` mode, only files with the matching extension are used. | — (required) |
 | `-c`, `--num_CpGs` | Number of CpG sites to randomly sample. | All available sites |
 | `-s`, `--num_samplings` | Number of random samplings of size `num_CpGs`. | `1` |
-| `-p`, `--plot` (`single`)<br>`-p`, `--plot_dir` (`multi`) | `.png` plot file (`single`) or directory for one plot per sample (`multi`); see [Plots](#plots). | No plots |
+| `-p`, `--plot` | Flag: also save plots in the output directory, `plot.png` (`single`) or `plots/<sample>.png` (`multi`); see [Plots](#plots). | No plots |
 
 ### Input formats
 
@@ -253,11 +253,23 @@ In both formats, probes that are not listed are treated as not measured.
 
 ## Output
 
+`single` and `multi` write their results to `result.txt` in the output directory (`-o`). With `-p`, the plots are written to the same directory:
+
+```
+OUTPUT_DIR/                 OUTPUT_DIR/
+├── result.txt              ├── result.txt
+└── plot.png   (single)     └── plots/       (multi)
+                                ├── sample1.png
+                                └── sample2.png
+```
+
+Existing files with the same name are overwritten, so use a new output directory per run if you want to keep earlier results.
+
 Scores are calibrated for sequencing depth: the model output is scaled with a temperature that depends on the number of CpG sites used, before being converted to probabilities. The scores of all classes sum to 1.
 
 ### `single`
 
-A comma-separated file with the raw scores: one row per sampling (so a single row when `-s` is not set), and the following columns:
+`result.txt` is a tab-separated file with the raw scores: one row per sampling (so a single row when `-s` is not set), and the following columns:
 
 | Column | Description |
 |---|---|
@@ -268,7 +280,7 @@ The predicted class (the class with the highest score, averaged over all samplin
 
 ### `multi`
 
-A tab-separated file with one summary row per input file:
+`result.txt` is a tab-separated file with one summary row per input file:
 
 | Column | Description |
 |---|---|
