@@ -19,7 +19,7 @@ Sturgeon V2 is the successor of [Sturgeon](https://github.com/UMCUGenetics/sturg
 
 - Python >= 3.10,<3.15
 - Linux or macOS <!-- TODO: confirm supported platforms -->
-- [modkit](https://github.com/nanoporetech/modkit) (recommended), for extracting methylation calls from BAM files
+- [modkit](https://github.com/nanoporetech/modkit), for extracting methylation calls from BAM files
 
 The original Sturgeon package is **not** required: preprocessing (`inputtobed`) is included in Sturgeon V2.
 
@@ -73,7 +73,7 @@ Nanopore BAM (with 5mC calls, aligned to T2T-CHM13v2.0)
         │
         │  modkit adjust-mods / modkit extract        (Step 1a)
         ▼
-modkit output (.txt)
+modkit extract output (.txt)
         │
         │  sturgeon-v2 inputtobed -m MODEL            (Step 1b)
         ▼
@@ -86,7 +86,7 @@ Class scores per sample
 
 ## Step 1: Preprocessing
 
-Preprocessing is done with `sturgeon-v2 inputtobed`. This command is ported from the `inputtobed` utility of the original [Sturgeon](https://github.com/UMCUGenetics/sturgeon) and produces identical output, so `.bed` files previously created with `sturgeon inputtobed` can still be used with Sturgeon V2. The probe locations are read from the model zip (`-m`).
+Preprocessing is done with `sturgeon-v2 inputtobed`. This command is ported from the `inputtobed` utility of the original [Sturgeon](https://github.com/UMCUGenetics/sturgeon) and uses the same mapping logic and default settings, so `.bed` files previously created with `sturgeon inputtobed` can still be used with Sturgeon V2. The probe locations are read from the model zip (`-m`).
 
 > ⚠️ **Reference genome: only T2T-CHM13v2.0 is supported.**
 > Sturgeon V2 does **not** support `hg38`. Reads must be aligned to the [T2T-CHM13v2.0 reference genome](https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz), which the probe locations in the model zip are based on. If your data is aligned to `hg38`, re-align it to T2T-CHM13v2.0 before preprocessing. Incorrectly aligned data will give wrong results without raising an error.
@@ -104,35 +104,37 @@ modkit adjust-mods --convert h m input.bam adjusted.bam
 **Extract per-read calls:**
 
 ```bash
-mkdir -p sample1/modkit
-modkit extract full adjusted.bam sample1/modkit/modkit_output.txt
+mkdir -p modkit
+modkit extract full adjusted.bam modkit/sample1.txt
 ```
 
 Older versions of modkit use `modkit extract` without `full`. Consult the [modkit documentation](https://nanoporetech.github.io/modkit/quick_start.html) if the command has changed.
 
-Alternatively, `modkit pileup` can be used to produce a single file of aggregated calls per genomic position.
+Name the output file after the sample: `inputtobed` uses the file name for the bed file it writes, and in `multi` mode that name becomes the sample name.
 
 ### 1b. Convert to bed with `sturgeon-v2 inputtobed`
 
-For `modkit extract` output, pass the directory containing the `.txt` file(s) and the model zip:
+`inputtobed` takes `modkit extract` output and the model zip. It can convert one sample or a whole directory of samples.
+
+**One sample** (for `single`): pass the modkit file; `-o` is the bed file to write.
 
 ```bash
-sturgeon-v2 inputtobed -i sample1/modkit -o sample1/bed -s modkit -m models/cns-v2.4b.zip
+sturgeon-v2 inputtobed -i modkit/sample1.txt -o bed_files/sample1.bed -m models/cns-v2.4b.zip
 ```
 
-This writes `sample1/bed/merged_probes_methyl_calls.bed`, which is the input for [Step 2](#step-2-prediction). The output directory also contains intermediate files: one `<name>_probes_methyl_calls.txt` per input file and `merged_probes_methyl_calls.txt` with the summed call counts per probe.
-
-For `modkit pileup` output, pass a single pileup file; `-o` is then the output bed file itself:
+**Several samples** (for `multi`): pass a directory; every `.txt` or `.tsv` modkit file in it is converted to its own `<name>.bed` in the output directory.
 
 ```bash
-sturgeon-v2 inputtobed -i sample1/pileup.bed -o sample1/sample1.bed -s modkit_pileup -m models/cns-v2.4b.zip
+sturgeon-v2 inputtobed -i modkit/ -o bed_files/ -m models/cns-v2.4b.zip
 ```
 
-An intermediate file with the same name plus `.tmp` is written next to it.
+Only the bed files are written; no intermediate files are created. Re-running overwrites existing bed files with the same name.
 
-> **One sample per run.** `inputtobed` merges all methylation calls from all `.txt` files in the input directory into a single output. If you have multiple samples, process each sample separately into its own output directory.
-
-> **Re-running in the same output directory.** For each input file, `inputtobed` skips processing if `<name>_probes_methyl_calls.txt` already exists in the output directory and reuses it. If input files have changed (for example, during live sequencing, or after changing `--margin`, the thresholds or the model), use a new output directory or delete the old intermediate files first.
+> **One file per sample.** In directory mode, each modkit file is treated as a separate sample. If the modkit output of one sample is split over several files, combine them into one file first (keeping a single header line), for example:
+> ```bash
+> head -n 1 part1.txt > sample1.txt
+> tail -q -n +2 part*.txt >> sample1.txt
+> ```
 
 ## Step 2: Prediction
 
@@ -145,7 +147,7 @@ Sturgeon V2 has two prediction modes:
 
 ```bash
 sturgeon-v2 single \
-    -i sample1/bed/merged_probes_methyl_calls.bed \
+    -i bed_files/sample1.bed \
     -m models/cns-v2.4b.zip \
     -f bed \
     -o results/sample1_prediction.csv
@@ -153,13 +155,9 @@ sturgeon-v2 single \
 
 ### Predict a directory of samples
 
-Collect one bed file per sample in a directory. The file name (without extension) is used as the sample name in the output, so rename the `merged_probes_methyl_calls.bed` files:
+Use the output directory of `inputtobed` in directory mode. The file name (without extension) is used as the sample name in the output.
 
 ```bash
-mkdir -p bed_files
-cp sample1/bed/merged_probes_methyl_calls.bed bed_files/sample1.bed
-cp sample2/bed/merged_probes_methyl_calls.bed bed_files/sample2.bed
-
 sturgeon-v2 multi \
     -i bed_files/ \
     -m models/cns-v2.4b.zip \
@@ -171,13 +169,13 @@ In `multi` mode, `-o` is a single tab-separated output file covering all samples
 
 ### Simulating lower coverage (subsampling)
 
-The `-c` and `-s` options randomly subsample the available CpG sites. This is useful for benchmarking how the classifier behaves at lower sequencing depth, for example to mimic an early timepoint during surgery. Sampling is seeded, so results are reproducible.
+The `-c` and `-s` options of `single` and `multi` randomly subsample the available CpG sites. This is useful for benchmarking how the classifier behaves at lower sequencing depth, for example to mimic an early timepoint during surgery. Sampling is seeded, so results are reproducible.
 
 The following example draws 10 random subsets of 1,000 CpG sites and predicts on each:
 
 ```bash
 sturgeon-v2 single \
-    -i sample1/bed/merged_probes_methyl_calls.bed \
+    -i bed_files/sample1.bed \
     -m models/cns-v2.4b.zip \
     -f bed \
     -c 1000 \
@@ -192,7 +190,7 @@ If `-c` is larger than the number of available CpG sites, all sites are used. Fo
 `sturgeon-v2` has three subcommands:
 
 ```
-sturgeon-v2 inputtobed -i INPUT_PATH -o OUTPUT_PATH -s SOURCE -m MODEL [options]
+sturgeon-v2 inputtobed -i INPUT_PATH -o OUTPUT_PATH -m MODEL
 sturgeon-v2 single     -i INPUT_FILE -m MODEL -o OUTPUT_FILE -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS]
 sturgeon-v2 multi      -i INPUT_DIR  -m MODEL -o OUTPUT_FILE -f FILE_TYPE [-c NUM_CPGS] [-s NUM_SAMPLINGS]
 ```
@@ -203,17 +201,11 @@ Run `sturgeon-v2 <subcommand> --help` for the full list of options.
 
 | Option | Description | Default |
 |---|---|---|
-| `-i`, `--input-path` | Input file or directory. For `modkit`/`megalodon`, all `.txt` files in the directory are used; for `guppy`, all `.bam` files. For `modkit_pileup`, a single file. | — (required) |
-| `-o`, `--output-path` | Output directory. For `modkit_pileup`, the output `.bed` file. | — (required) |
-| `-s`, `--source` | Tool that produced the input: `modkit`, `modkit_pileup`, `megalodon` or `guppy`. | — (required) |
-| `-m`, `--model` | Path to the model zip file, e.g. `cns-v2.4b.zip`. The probe locations (`probe.bed`) are read from it. Use the same model as for prediction. | — (required, unless `--probes-file` is given) |
-| `--probes-file` | Custom probe location file, instead of the one in the model zip. Cannot be combined with `-m`. | — |
-| `--margin` | Distance (bp) around each probe within which methylation calls are considered. | `25` |
-| `--neg-threshold` | Calls with a score below this value are counted as unmethylated. | `0.3` |
-| `--pos-threshold` | Calls with a score above this value are counted as methylated. | `0.7` |
-| `--fivemc-code` | Code used for 5mC in modkit files. | `m` |
+| `-i`, `--input-path` | A `modkit extract` file, or a directory of them (`.txt` or `.tsv`). | — (required) |
+| `-o`, `--output-path` | The output `.bed` file when `-i` is a file; the output directory when `-i` is a directory (one `<name>.bed` per input file). | — (required) |
+| `-m`, `--model` | Path to the model zip file, e.g. `cns-v2.4b.zip`. The probe locations (`probe.bed`) are read from it. Use the same model as for prediction. | — (required) |
 
-Calls with a score between the two thresholds are ignored. Each probe is assigned methylated or unmethylated by majority vote of the remaining calls within the margin.
+The conversion uses fixed settings, the defaults of the original Sturgeon: for each probe, all 5mC calls (modkit code `m`) within 25 bp are considered. Calls with a score above 0.7 count as methylated, calls below 0.3 as unmethylated, and calls in between are ignored. Each probe is assigned methylated or unmethylated by majority vote; probes with a tie or without calls are left out.
 
 ### `single` and `multi`
 
