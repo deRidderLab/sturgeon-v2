@@ -20,6 +20,9 @@ from sturgeon_v2.plotting import get_class_colors, plot_scores
 
 
 SUMMARY_COLUMNS = ["sample", "class", "score"]
+RESULT_FILENAME = "result.txt"
+SINGLE_PLOT_FILENAME = "plot.png"
+MULTI_PLOT_DIRNAME = "plots"
 
 
 # ---------------------------------------------------------------------
@@ -193,9 +196,10 @@ def summarise(sample_name: str, class_names: List[str], result: np.ndarray) -> d
     }
 
 
-def _ensure_parent_dir(path: str) -> None:
-    parent = os.path.dirname(os.path.abspath(path))
-    os.makedirs(parent, exist_ok=True)
+def _prepare_output_dir(output_dir: str) -> None:
+    if os.path.exists(output_dir) and not os.path.isdir(output_dir):
+        raise ValueError(f"-o/--output_dir must be a directory, given an existing file: {output_dir}")
+    os.makedirs(output_dir, exist_ok=True)
 
 
 # ---------------------------------------------------------------------
@@ -205,10 +209,10 @@ def predict(
     input_file,
     model_zip_path,
     n,
-    output_file,
+    output_dir,
     num_samples,
     file_type,
-    plot_file=None,
+    plot=False,
 ):
     if num_samples is None:
         num_samples = 1
@@ -231,10 +235,11 @@ def predict(
         summary = summarise(sample_name, model.class_names, result)
 
         # raw scores: one row per sampling, one column per class
-        _ensure_parent_dir(output_file)
+        _prepare_output_dir(output_dir)
+        output_file = os.path.join(output_dir, RESULT_FILENAME)
         df = pd.DataFrame(result, columns=model.class_names)
         df["probes"] = n_used
-        df.to_csv(output_file, index=False)
+        df.to_csv(output_file, sep="\t", index=False)
 
         print("-------------------------------")
         print(f"Sample:          {summary['sample']}")
@@ -245,11 +250,8 @@ def predict(
         print("-------------------------------")
         print(f"Results saved to {output_file}")
 
-        if plot_file:
-            # plots are always stored as .png
-            if Path(plot_file).suffix.lower() != ".png":
-                plot_file = str(Path(plot_file).with_suffix(".png"))
-            _ensure_parent_dir(plot_file)
+        if plot:
+            plot_file = os.path.join(output_dir, SINGLE_PLOT_FILENAME)
             plot_scores(
                 sample_name=sample_name,
                 class_names=model.class_names,
@@ -271,10 +273,10 @@ def predict_directory(
     input_dir,
     model_zip_path,
     n,
-    output_file,
+    output_dir,
     num_samples,
     file_type,
-    plot_dir=None,
+    plot=False,
 ):
     if num_samples is None:
         num_samples = 1
@@ -283,6 +285,8 @@ def predict_directory(
 
     try:
         model = load_model(model_zip_path, tmpdir)
+        _prepare_output_dir(output_dir)
+        plot_dir = os.path.join(output_dir, MULTI_PLOT_DIRNAME) if plot else None
         if plot_dir:
             os.makedirs(plot_dir, exist_ok=True)
 
@@ -324,7 +328,7 @@ def predict_directory(
         if not results_list:
             raise ValueError(f"No {ext} files found in {input_dir}")
 
-        _ensure_parent_dir(output_file)
+        output_file = os.path.join(output_dir, RESULT_FILENAME)
         df_out = pd.DataFrame(results_list, columns=SUMMARY_COLUMNS)
         df_out.to_csv(output_file, sep="\t", index=False)
         print(f"\nAll multi-results saved to {output_file}")
@@ -349,22 +353,26 @@ def main():
     parser_single.add_argument("-i", "--input_file", required=True, help="Input file path")
     parser_single.add_argument("-m", "--model", required=True, help="Path to the model zip")
     parser_single.add_argument("-c", "--num_CpGs", help="Number of CpGs to use")
-    parser_single.add_argument("-o", "--output_file", required=True, help="Path to save the output csv (scores of all classes per sampling)")
+    parser_single.add_argument("-o", "--output_dir", required=True,
+                               help="Output directory; gets result.txt (scores of all classes per sampling) "
+                                    "and, with -p, plot.png")
     parser_single.add_argument("-s", "--num_samplings", help="Number of subsamplings")
     parser_single.add_argument("-f", "--file_type", required=True, choices=["bed", "csv"], help="Type of file")
-    parser_single.add_argument("-p", "--plot", default=None,
-                               help="Save a plot of the scores of all classes to this .png file")
+    parser_single.add_argument("-p", "--plot", action="store_true",
+                               help="Also save a plot of the scores of all classes as plot.png in the output directory")
 
     # Parser for `sturgeon-v2 multi`
     parser_multi = subparsers.add_parser("multi", help="Predict on a directory of .bed or .csv files")
     parser_multi.add_argument("-i", "--input_dir", required=True, help="Input directory path")
     parser_multi.add_argument("-m", "--model", required=True, help="Path to the model zip")
     parser_multi.add_argument("-c", "--num_CpGs", help="Number of CpGs to use")
-    parser_multi.add_argument("-o", "--output_file", required=True, help="Path to save the combined output tsv")
+    parser_multi.add_argument("-o", "--output_dir", required=True,
+                              help="Output directory; gets result.txt (one summary row per sample) "
+                                   "and, with -p, a plots/ directory")
     parser_multi.add_argument("-s", "--num_samplings", help="Number of subsamplings")
     parser_multi.add_argument("-f", "--file_type", required=True, choices=["bed", "csv"], help="Type of files")
-    parser_multi.add_argument("-p", "--plot_dir", default=None,
-                              help="Directory to save one plot per sample (<sample>.png) with the scores of all classes")
+    parser_multi.add_argument("-p", "--plot", action="store_true",
+                              help="Also save one plot per sample as plots/<sample>.png in the output directory")
 
     # Parser for `sturgeon-v2 inputtobed`
     parser_bed = subparsers.add_parser(
@@ -399,11 +407,11 @@ def main():
         if os.path.isdir(args.input_path):
             print(f"{len(bed_files)} bed files saved to {args.output_path}")
             print(f"Run prediction with: sturgeon-v2 multi -f bed -i {args.output_path} "
-                  f"-m {args.model} -o OUTPUT_TSV")
+                  f"-m {args.model} -o OUTPUT_DIR")
         else:
             print(f"Bed file saved to {bed_files[0]}")
             print(f"Run prediction with: sturgeon-v2 single -f bed -i {bed_files[0]} "
-                  f"-m {args.model} -o OUTPUT_TSV")
+                  f"-m {args.model} -o OUTPUT_DIR")
         return
 
     num_samples = int(args.num_samplings) if args.num_samplings else 1
@@ -417,20 +425,20 @@ def main():
             input_file=args.input_file,
             model_zip_path=args.model,
             n=args.num_CpGs,
-            output_file=args.output_file,
+            output_dir=args.output_dir,
             num_samples=num_samples,
             file_type=args.file_type,
-            plot_file=args.plot,
+            plot=args.plot,
         )
     elif args.command == "multi":
         predict_directory(
             input_dir=args.input_dir,
             model_zip_path=args.model,
             n=args.num_CpGs,
-            output_file=args.output_file,
+            output_dir=args.output_dir,
             num_samples=num_samples,
             file_type=args.file_type,
-            plot_dir=args.plot_dir,
+            plot=args.plot,
         )
 
 def entrypoint():
