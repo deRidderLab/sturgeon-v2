@@ -361,56 +361,41 @@ def main():
     # Parser for `sturgeon-v2 inputtobed`
     parser_bed = subparsers.add_parser(
         "inputtobed",
-        help="Convert modkit methylation calls to a bed file",
+        help="Convert modkit extract output to bed file(s) for single or multi",
     )
     parser_bed.add_argument("-i", "--input-path", required=True,
-                            help="Input file, or directory with input files (.txt for modkit/megalodon, .bam for guppy). "
-                                 "For modkit_pileup this must be a single file.")
+                            help="A modkit extract file (gives one bed, for 'single'), or a directory of "
+                                 "modkit extract files (gives one bed per file, for 'multi')")
     parser_bed.add_argument("-o", "--output-path", required=True,
-                            help="Output directory (result: merged_probes_methyl_calls.bed). "
-                                 "For modkit_pileup this is the output bed file itself.")
-    parser_bed.add_argument("-s", "--source", required=True,
-                            choices=["modkit", "modkit_pileup", "megalodon", "guppy"],
-                            help="Tool that produced the input files")
-    probes_group = parser_bed.add_mutually_exclusive_group(required=True)
-    probes_group.add_argument("-m", "--model",
-                              help="Path to the model zip; its probe.bed is used for the probe locations "
-                                   "(use the same model as for prediction)")
-    probes_group.add_argument("--probes-file", default=None,
-                              help="Custom probes file with probe names and genomic locations (instead of --model)")
-    parser_bed.add_argument("--margin", type=int, default=25,
-                            help="Neighbouring methylation calls (bp) to consider when evaluating a probe location (default: 25)")
-    parser_bed.add_argument("--neg-threshold", type=float, default=0.3,
-                            help="Scores below this threshold are considered unmethylated (default: 0.3)")
-    parser_bed.add_argument("--pos-threshold", type=float, default=0.7,
-                            help="Scores above this threshold are considered methylated (default: 0.7)")
-    parser_bed.add_argument("--fivemc-code", default="m",
-                            help="One letter code used to annotate 5mC in modkit files (default: m)")
+                            help="Output bed file when the input is a file; output directory when the "
+                                 "input is a directory")
+    parser_bed.add_argument("-m", "--model", required=True,
+                            help="Path to the model zip; its probe.bed is used for the probe locations "
+                                 "(use the same model as for prediction)")
 
     args = parser.parse_args()
 
     if args.command == "inputtobed":
         import logging
-        from sturgeon_v2.inputtobed import filetobed
+        from sturgeon_v2.inputtobed import modkit_to_bed
 
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
         print("---------------------------------------------------------------------")
-        print(f"Converting {args.source} methylation calls to bed")
+        print("Converting modkit methylation calls to bed")
         print("---------------------------------------------------------------------")
-        bed_file = filetobed(
+        bed_files = modkit_to_bed(
             input_path=args.input_path,
             output_path=args.output_path,
-            source=args.source,
             model_zip=args.model,
-            probes_file=args.probes_file,
-            margin=args.margin,
-            neg_threshold=args.neg_threshold,
-            pos_threshold=args.pos_threshold,
-            fivemc_code=args.fivemc_code,
         )
-        print(f"Bed file saved to {bed_file}")
-        model_hint = args.model if args.model else "MODEL_ZIP"
-        print(f"Run prediction with: sturgeon-v2 single -f bed -i {bed_file} -m {model_hint} -o OUTPUT_CSV")
+        if os.path.isdir(args.input_path):
+            print(f"{len(bed_files)} bed files saved to {args.output_path}")
+            print(f"Run prediction with: sturgeon-v2 multi -f bed -i {args.output_path} "
+                  f"-m {args.model} -o OUTPUT_TSV")
+        else:
+            print(f"Bed file saved to {bed_files[0]}")
+            print(f"Run prediction with: sturgeon-v2 single -f bed -i {bed_files[0]} "
+                  f"-m {args.model} -o OUTPUT_CSV")
         return
 
     num_samples = int(args.num_samplings) if args.num_samplings else 1
