@@ -28,19 +28,19 @@ The original Sturgeon package is **not** required: preprocessing (`inputtobed`) 
 Install directly from GitHub over SSH (requires an SSH key linked to your GitHub account):
 
 ```bash
-pip install git+ssh://git@github.com/UMCUGenetics/sturgeon-v2.git
+pip install git+ssh://github.com/deRidderLab/sturgeon-v2.git
 ```
 
 Alternatively, install over HTTPS:
 
 ```bash
-pip install git+https://github.com/UMCUGenetics/sturgeon-v2.git
+pip install git+https://github.com/deRidderLab/sturgeon-v2.git
 ```
 
 Or install from a local clone:
 
 ```bash
-git clone https://github.com/UMCUGenetics/sturgeon-v2.git
+git clone https://github.com/deRidderLab/sturgeon-v2.git
 cd sturgeon-v2
 pip install .
 ```
