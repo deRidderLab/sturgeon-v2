@@ -150,7 +150,7 @@ sturgeon-v2 single \
     -i bed_files/sample1.bed \
     -m models/cns-v2.4b.zip \
     -f bed \
-    -o results/sample1_prediction.tsv \
+    -o results/sample1_prediction.csv \
     -p results/sample1_prediction.png
 ```
 
@@ -191,7 +191,7 @@ sturgeon-v2 single \
     -f bed \
     -c 1000 \
     -s 10 \
-    -o results/sample1_1000cpgs.tsv \
+    -o results/sample1_1000cpgs.csv \
     -p results/sample1_1000cpgs.png
 ```
 
@@ -225,7 +225,7 @@ The conversion uses fixed settings, the defaults of the original Sturgeon: for e
 |---|---|---|
 | `-i`, `--input_file` (`single`)<br>`-i`, `--input_dir` (`multi`) | Path to the input file (`single`) or to a directory of input files (`multi`). | — (required) |
 | `-m`, `--model` | Path to the model zip file, e.g. `cns-v2.4b.zip`. | — (required) |
-| `-o`, `--output_file` | Path of the tab-separated output file. | — (required) |
+| `-o`, `--output_file` | Path of the output file: comma-separated with all class scores (`single`), or tab-separated with one summary row per sample (`multi`). | — (required) |
 | `-f`, `--file_type` | Input file type: `bed` or `csv`. In `multi` mode, only files with the matching extension are used. | — (required) |
 | `-c`, `--num_CpGs` | Number of CpG sites to randomly sample. | All available sites |
 | `-s`, `--num_samplings` | Number of random samplings of size `num_CpGs`. | `1` |
@@ -253,7 +253,22 @@ In both formats, probes that are not listed are treated as not measured.
 
 ## Output
 
-`single` and `multi` write the same tab-separated format: one row per sample (one row in total for `single`), with the following columns:
+Scores are calibrated for sequencing depth: the model output is scaled with a temperature that depends on the number of CpG sites used, before being converted to probabilities. The scores of all classes sum to 1.
+
+### `single`
+
+A comma-separated file with the raw scores: one row per sampling (so a single row when `-s` is not set), and the following columns:
+
+| Column | Description |
+|---|---|
+| one column per class | The calibrated score for that class, in the order of the model's `classification_system.yaml`. |
+| `probes` | Number of CpG sites used for the prediction. |
+
+The predicted class (the class with the highest score, averaged over all samplings), its score and the number of CpG sites used are also printed in the terminal.
+
+### `multi`
+
+A tab-separated file with one summary row per input file:
 
 | Column | Description |
 |---|---|
@@ -268,5 +283,3 @@ sample	class	score
 sample1	MB_SHH	0.9731
 sample2	GBM_RTK2	0.8812
 ```
-
-Scores are calibrated for sequencing depth: the model output is scaled with a temperature that depends on the number of CpG sites used, before being converted to probabilities. The scores of all classes sum to 1.
