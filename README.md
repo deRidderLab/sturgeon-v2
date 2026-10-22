@@ -2,6 +2,9 @@
 
 **Intraoperative CNS tumour classification from nanopore methylation data.**
 
+<img width="1362" height="426" alt="image" src="https://github.com/user-attachments/assets/f90597f1-641d-4cca-beb8-ccbc02d8b4ff" />
+
+
 Sturgeon V2 is the successor of [Sturgeon](https://github.com/UMCUGenetics/sturgeon), a neural network classifier for central nervous system (CNS) tumours based on sparse DNA methylation profiles, such as those that can be obtained with intra-operative nanopore sequencing. This repository provides a pip-installable package to run Sturgeon V2 in a clinical setting, from preprocessing of methylation calls through to prediction.
 
 ## Table of contents
