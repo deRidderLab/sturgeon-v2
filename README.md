@@ -57,12 +57,10 @@ Models are distributed as zip files and are passed to `sturgeon-v2` with the `-m
 
 | Model | Status | Download |
 |---|---|---|
-| `cns-v2.4b` | **Current, recommended** | [zip file](https://drive.google.com/file/d/18cHuUTN_7TyOZzcbaIGeVrugoYCHNkOE/view?usp=share_link) |
+| `cns-v2` | **Current, recommended** | [zip file](https://zenodo.org/records/22899108) |
 | `cns-v2.4a` | Deprecated | [zip file](https://drive.google.com/file/d/1opEUbGWtUCONWhlfrv9NfSuGM8pXj-D8/view?usp=share_link) |
 
 <!-- TODO: describe the classification scheme of cns-v2.4b (number of classes, control classes, merged classes) and what changed between v2.4a and v2.4b -->
-
-> **Note:** `cns-v2.4a` is kept available only for reproducibility of earlier results. Use `cns-v2.4b` for all new analyses.
 
 > **Use the same model for preprocessing and prediction.** Pass the same model zip to `inputtobed` and to `single`/`multi`.
 
